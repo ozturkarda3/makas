@@ -49,8 +49,10 @@ export default function DashboardPage() {
   const [appointmentData, setAppointmentData] = useState<AnalyticsData[]>([])
   const [revenueData, setRevenueData] = useState<AnalyticsData[]>([])
   const [newClientData, setNewClientData] = useState<AnalyticsData[]>([])
-  const [rawAppointments, setRawAppointments] = useState<any[]>([])
-  const [rawClients, setRawClients] = useState<any[]>([])
+  type RawAppointment = { start_time: string; services?: Array<{ price: number }> }
+  type RawClient = { created_at: string }
+  const [rawAppointments, setRawAppointments] = useState<RawAppointment[]>([])
+  const [rawClients, setRawClients] = useState<RawClient[]>([])
   const [timeRange, setTimeRange] = useState('7d')
   const [isLoading, setIsLoading] = useState(true)
 
@@ -241,7 +243,7 @@ export default function DashboardPage() {
   }
 
   // Helper function to process weekly appointment data
-  const processWeeklyData = (appointments: any[]): WeeklyData[] => {
+  const processWeeklyData = (appointments: Array<{ start_time: string }>): WeeklyData[] => {
     const today = new Date()
     const weeklyData: WeeklyData[] = []
     
@@ -331,7 +333,11 @@ export default function DashboardPage() {
   }
 
   // Helper function to process analytics data with advanced aggregation
-  const processAnalyticsData = (appointments: any[], clients: any[], timeRange: string) => {
+  const processAnalyticsData = (
+    appointments: Array<{ start_time: string; services?: Array<{ price: number }> }>,
+    clients: Array<{ created_at: string }>,
+    timeRange: string
+  ) => {
     const today = new Date()
     const appointmentData: AnalyticsData[] = []
     const revenueData: AnalyticsData[] = []

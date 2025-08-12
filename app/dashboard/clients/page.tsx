@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
@@ -59,6 +59,24 @@ export default function ClientsPage() {
     }
   })
 
+  const fetchClients = useCallback(async (userId: string) => {
+    try {
+      const { data: clientsData, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('profile_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching clients:', error)
+      } else {
+        setClients(clientsData || [])
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error)
+    }
+  }, [supabase])
+
   useEffect(() => {
     const checkUserAndFetchClients = async () => {
       try {
@@ -80,25 +98,8 @@ export default function ClientsPage() {
     }
 
     checkUserAndFetchClients()
-  }, [router, supabase])
-
-  const fetchClients = async (userId: string) => {
-    try {
-      const { data: clientsData, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('profile_id', userId)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching clients:', error)
-      } else {
-        setClients(clientsData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching clients:', error)
-    }
-  }
+  }, [router, supabase, fetchClients])
+  
 
   const openCreateDialog = () => {
     setIsEditMode(false)
@@ -353,7 +354,7 @@ export default function ClientsPage() {
                   Henüz hiç müşteri eklemediniz.
                 </p>
                 <p className="text-slate-500">
-                  Yukarıdaki "Yeni Müşteri Ekle" butonunu kullanarak ilk müşterinizi ekleyin.
+                  Yukarıdaki &quot;Yeni Müşteri Ekle&quot; butonunu kullanarak ilk müşterinizi ekleyin.
                 </p>
               </div>
             ) : (
@@ -415,7 +416,7 @@ export default function ClientsPage() {
             onClick={() => router.push('/dashboard')}
             className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           >
-            ← Dashboard'a Dön
+            ← Dashboard&#39;a Dön
           </Button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabaseClient'
+import Image from 'next/image'
 
 export default function AddPhotoPage() {
   const router = useRouter()
@@ -74,13 +75,14 @@ export default function AddPhotoPage() {
       // Dynamically find the default album for this user
       console.log('Looking for default album for user:', userId)
       
-      let { data: album, error: albumError } = await supabase
+      const { data: initialAlbum, error: albumError } = await supabase
         .from('portfolio_albums')
         .select('id, name')
         .eq('profile_id', userId)
         .eq('name', 'Genel Çalışmalar')
         .single()
       
+      let album = initialAlbum
       console.log('Initial album search result:', { album, albumError })
 
       // Handle album error with simple approach
@@ -117,7 +119,6 @@ export default function AddPhotoPage() {
 
       console.log('Using album:', { albumId, albumName: album.name })
       
-      const fileExtension = selectedFile.name.split('.').pop()
       const fileName = `${userId}/${albumId}/${Date.now()}_${selectedFile.name}`
       
       console.log('File path:', fileName)
@@ -251,9 +252,11 @@ export default function AddPhotoPage() {
             <div className="flex justify-center">
               {previewUrl ? (
                 <div className="relative">
-                  <img
+                  <Image
                     src={previewUrl}
                     alt="Seçilen fotoğraf"
+                    width={800}
+                    height={256}
                     className="max-w-full h-64 object-cover rounded-lg border-2 border-slate-700"
                   />
                   <button
