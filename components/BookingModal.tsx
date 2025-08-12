@@ -80,7 +80,7 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
           return
         }
 
-        const intervals: Array<{ start: Date; end: Date }> = (appointments || []).map((apt: any) => {
+        const intervals: Array<{ start: Date; end: Date }> = (appointments || []).map((apt: { start_time: string; services?: Array<{ duration: number }> }) => {
           const start = new Date(apt.start_time)
           const durationMinutes: number = apt.services?.[0]?.duration || 30
           const end = new Date(start)

@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { CalendarCheck2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
-import EmptyState from "@/components/ui/EmptyState"
 import AddAppointmentModal from "@/components/dashboard/AddAppointmentModal"
 
 interface Client {

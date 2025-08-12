@@ -52,7 +52,7 @@ export default function SignupPage() {
         console.log('Session exists:', !!authData.session)
         
         // Insert profile record into profiles table and get the created profile
-        const { data: profileData, error: profileError } = await supabase
+        const { error: profileError } = await supabase
           .from('profiles')
           .insert({
             id: authData.user.id,
@@ -60,8 +60,7 @@ export default function SignupPage() {
             username: username,
             full_name: fullName,
           })
-          .select()
-          .single()
+          
 
         if (profileError) {
           throw new Error(profileError.message)

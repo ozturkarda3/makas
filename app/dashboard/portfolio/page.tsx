@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabaseClient'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,24 @@ export default function PortfolioPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
 
+  const fetchAlbums = useCallback(async (userId: string) => {
+    try {
+      const { data: albumsData, error } = await supabase
+        .from('portfolio_albums')
+        .select('*')
+        .eq('profile_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching albums:', error)
+      } else {
+        setAlbums(albumsData || [])
+      }
+    } catch (error) {
+      console.error('Error fetching albums:', error)
+    }
+  }, [supabase])
+
   useEffect(() => {
     const checkUserAndFetchAlbums = async () => {
       try {
@@ -49,25 +67,7 @@ export default function PortfolioPage() {
     }
 
     checkUserAndFetchAlbums()
-  }, [router, supabase])
-
-  const fetchAlbums = async (userId: string) => {
-    try {
-      const { data: albumsData, error } = await supabase
-        .from('portfolio_albums')
-        .select('*')
-        .eq('profile_id', userId)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching albums:', error)
-      } else {
-        setAlbums(albumsData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching albums:', error)
-    }
-  }
+  }, [router, supabase, fetchAlbums])
 
   const handleCreateAlbum = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -233,7 +233,7 @@ export default function PortfolioPage() {
             onClick={() => router.push('/dashboard')}
             className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           >
-            ← Dashboard'a Dön
+            ← Dashboard&#39;a Dön
           </Button>
         </div>
       </div>

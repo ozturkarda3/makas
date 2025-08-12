@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
@@ -58,6 +58,24 @@ export default function ServicesPage() {
     }
   })
 
+  const fetchServices = useCallback(async (userId: string) => {
+    try {
+      const { data: servicesData, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('profile_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching services:', error)
+      } else {
+        setServices(servicesData || [])
+      }
+    } catch (error) {
+      console.error('Error fetching services:', error)
+    }
+  }, [supabase])
+
   useEffect(() => {
     const checkUserAndFetchServices = async () => {
       try {
@@ -79,25 +97,7 @@ export default function ServicesPage() {
     }
 
     checkUserAndFetchServices()
-  }, [router, supabase])
-
-  const fetchServices = async (userId: string) => {
-    try {
-      const { data: servicesData, error } = await supabase
-        .from('services')
-        .select('*')
-        .eq('profile_id', userId)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching services:', error)
-      } else {
-        setServices(servicesData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching services:', error)
-    }
-  }
+  }, [router, supabase, fetchServices])
 
   const openCreateDialog = () => {
     setIsEditMode(false)
@@ -345,7 +345,7 @@ export default function ServicesPage() {
                   Henüz hiç hizmet eklemediniz.
                 </p>
                 <p className="text-slate-500">
-                  Yukarıdaki "Yeni Hizmet Ekle" butonunu kullanarak ilk hizmetinizi ekleyin.
+                  Yukarıdaki &quot;Yeni Hizmet Ekle&quot; butonunu kullanarak ilk hizmetinizi ekleyin.
                 </p>
               </div>
             ) : (
@@ -405,7 +405,7 @@ export default function ServicesPage() {
             onClick={() => router.push('/dashboard')}
             className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           >
-            ← Dashboard'a Dön
+            ← Dashboard&#39;a Dön
           </Button>
         </div>
       </div>

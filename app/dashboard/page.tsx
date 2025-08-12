@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import type { User } from '@supabase/supabase-js'
-import { CalendarDays, DollarSign, Users, Calendar, Edit, Scissors, BookUser, Image } from 'lucide-react'
+import { CalendarDays, DollarSign, Users, Calendar, Edit, Scissors, BookUser, Image as ImageIcon } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import StatCard from '@/components/dashboard/StatCard'
 import TodaysAgenda from '@/components/dashboard/TodaysAgenda'
@@ -19,10 +19,7 @@ interface Appointment {
   services: { name: string; price: number }
 }
 
-interface WeeklyData {
-  date: string
-  total: number
-}
+// WeeklyData removed as weekly chart is no longer rendered
 
 interface AnalyticsData {
   date: string
@@ -45,7 +42,7 @@ export default function DashboardPage() {
     totalClients: 0
   })
   const [todaysAppointments, setTodaysAppointments] = useState<Appointment[]>([])
-  const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([])
+  // Removed unused weeklyData state
   const [appointmentData, setAppointmentData] = useState<AnalyticsData[]>([])
   const [revenueData, setRevenueData] = useState<AnalyticsData[]>([])
   const [newClientData, setNewClientData] = useState<AnalyticsData[]>([])
@@ -56,34 +53,9 @@ export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState('7d')
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    const checkUserAndFetchData = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          router.push('/login')
-          return
-        }
+  // Initial load effect is placed after callback definitions
 
-        setUser(session.user)
-        
-                       // Fetch all required data in parallel
-               await Promise.all([
-                 fetchTodaysAppointments(session.user.id),
-                 fetchTotalClients(session.user.id),
-                 fetchWeeklyData(session.user.id),
-                 fetchAnalyticsData(session.user.id)
-               ])
-      } catch (error) {
-        console.error('Error:', error)
-        router.push('/login')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-               checkUserAndFetchData()
-         }, [router, supabase])
+  // Initial load after defining data-fetching callbacks
 
   // Reprocess analytics data when timeRange changes
   useEffect(() => {
@@ -101,7 +73,7 @@ export default function DashboardPage() {
     }
   }, [timeRange, rawAppointments, rawClients])
 
-  const fetchTodaysAppointments = async (userId: string) => {
+  const fetchTodaysAppointments = useCallback(async (userId: string) => {
     try {
       // Get today's date range (start and end of day)
       const today = new Date()
@@ -189,9 +161,9 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Error fetching appointments:', error)
     }
-  }
+  }, [supabase])
 
-  const fetchTotalClients = async (userId: string) => {
+  const fetchTotalClients = useCallback(async (userId: string) => {
     try {
       const { data: clientsData, error } = await supabase
         .from('clients')
@@ -209,71 +181,11 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Error fetching clients:', error)
     }
-  }
+  }, [supabase])
 
-  const fetchWeeklyData = async (userId: string) => {
-    try {
-      // Get date range based on timeRange
-      const today = new Date()
-      const daysAgo = new Date(today)
-      const daysToSubtract = timeRange === '7d' ? 6 : 29 // 6 for 7 days, 29 for 30 days
-      daysAgo.setDate(today.getDate() - daysToSubtract)
-      
-      const startDate = daysAgo.toISOString()
-      const endDate = today.toISOString()
+  // Removed weekly data computation since WeeklyChart is no longer used
 
-      // Fetch appointments from last 7 days
-      const { data: weeklyAppointments, error } = await supabase
-        .from('appointments')
-        .select('start_time')
-        .eq('profile_id', userId)
-        .gte('start_time', startDate)
-        .lte('start_time', endDate)
-
-      if (error) {
-        console.error('Error fetching weekly data:', error)
-      } else {
-        // Process the data for the chart
-        const processedData = processWeeklyData(weeklyAppointments || [])
-        setWeeklyData(processedData)
-      }
-    } catch (error) {
-      console.error('Error fetching weekly data:', error)
-    }
-  }
-
-  // Helper function to process weekly appointment data
-  const processWeeklyData = (appointments: Array<{ start_time: string }>): WeeklyData[] => {
-    const today = new Date()
-    const weeklyData: WeeklyData[] = []
-    
-    // Generate data based on timeRange
-    const daysToProcess = timeRange === '7d' ? 7 : 30
-    for (let i = daysToProcess - 1; i >= 0; i--) {
-      const date = new Date(today)
-      date.setDate(today.getDate() - i)
-      
-      // Count appointments for this specific date
-      const dayStart = new Date(date)
-      dayStart.setHours(0, 0, 0, 0)
-      const dayEnd = new Date(date)
-      dayEnd.setHours(23, 59, 59, 999)
-      
-      const dayAppointments = appointments.filter(apt => {
-        const aptDate = new Date(apt.start_time)
-        return aptDate >= dayStart && aptDate <= dayEnd
-      })
-      
-      weeklyData.push({
-        date: date.toISOString().split('T')[0], // YYYY-MM-DD format
-        total: dayAppointments.length
-      })
-    }
-    
-    return weeklyData
-  }
-
-  const fetchAnalyticsData = async (userId: string) => {
+  const fetchAnalyticsData = useCallback(async (userId: string) => {
     try {
       // Always fetch data covering the last 6 months INCLUDING the current month
       // Start from the first day of the month 5 months ago, through today
@@ -330,7 +242,7 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Error fetching analytics data:', error)
     }
-  }
+  }, [supabase, timeRange])
 
   // Helper function to process analytics data with advanced aggregation
   const processAnalyticsData = (
@@ -506,6 +418,31 @@ export default function DashboardPage() {
     router.push('/')
   }
   
+  // Now that callbacks are defined, run initial load
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          router.push('/login')
+          return
+        }
+        setUser(session.user)
+        await Promise.all([
+          fetchTodaysAppointments(session.user.id),
+          fetchTotalClients(session.user.id),
+          fetchAnalyticsData(session.user.id)
+        ])
+      } catch (error) {
+        console.error('Error:', error)
+        router.push('/login')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    run()
+  }, [router, supabase, fetchTodaysAppointments, fetchTotalClients, fetchAnalyticsData])
+
   if (isLoading) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Yükleniyor...</div>
   }
@@ -638,7 +575,7 @@ export default function DashboardPage() {
                   {/* Portfolio Card */}
                   <Link href="/dashboard/portfolio" className="block p-4 rounded-lg hover:bg-slate-800 transition-colors border border-slate-700 hover:border-slate-600">
                     <div className="flex items-center">
-                      <Image className="h-6 w-6 text-slate-400 mr-3" />
+                      <ImageIcon className="h-6 w-6 text-slate-400 mr-3" />
                       <div>
                         <h4 className="font-semibold text-white">Portfolyo</h4>
                         <p className="text-slate-400 text-sm">Albümleri ve fotoğrafları yönet</p>

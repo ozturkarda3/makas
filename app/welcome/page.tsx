@@ -71,7 +71,7 @@ export default function WelcomePage() {
     }
 
     checkSessionAndFetchProfile()
-  }, [router, supabase.auth])
+  }, [router, supabase])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

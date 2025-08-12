@@ -36,14 +36,13 @@ export default function PublicAlbumPage({ params }: PublicAlbumPageProps) {
   const [album, setAlbum] = useState<Album | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [albumId, setAlbumId] = useState<string>('')
+  // removed unused albumId state
 
   useEffect(() => {
     const fetchAlbumData = async () => {
       try {
         // Get albumId from params
         const { albumId: id } = await params
-        setAlbumId(id)
 
         // Fetch album details with profile info
         const { data: albumData, error: albumError } = await supabase

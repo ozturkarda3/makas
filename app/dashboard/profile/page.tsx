@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import type { User } from '@supabase/supabase-js'
+import Image from 'next/image'
 
 interface Profile {
   id: string
@@ -300,9 +301,11 @@ export default function EditProfilePage() {
               <Label className="text-slate-300">Logo</Label>
               {profile.logo_url ? (
                 <div className="mb-3">
-                  <img
+                  <Image
                     src={profile.logo_url}
                     alt="Mevcut logo"
+                    width={96}
+                    height={96}
                     className="h-24 w-24 object-cover rounded-full border border-slate-700"
                   />
                 </div>
@@ -328,9 +331,11 @@ export default function EditProfilePage() {
               <Label className="text-slate-300">Kapak Fotoğrafı (Banner)</Label>
               {profile.cover_image_url ? (
                 <div className="mb-3">
-                  <img
+                  <Image
                     src={profile.cover_image_url}
                     alt="Mevcut kapak"
+                    width={1200}
+                    height={160}
                     className="w-full max-h-40 object-cover rounded border border-slate-700"
                   />
                 </div>
@@ -411,7 +416,7 @@ export default function EditProfilePage() {
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-slate-600"
               />
               <p className="text-xs text-slate-500">
-                Instagram profilinizin tam URL'sini girin
+                Instagram profilinizin tam URL&#39;sini girin
               </p>
             </div>
 
@@ -422,7 +427,7 @@ export default function EditProfilePage() {
                 onClick={() => router.push('/dashboard')}
                 className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
               >
-                ← Dashboard'a Dön
+                ← Dashboard&#39;a Dön
               </Button>
               
               <Button

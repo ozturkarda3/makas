@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabaseClient'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,6 +39,46 @@ export default function AlbumDetailPage({ params }: AlbumDetailPageProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [albumId, setAlbumId] = useState<string>('')
 
+  const fetchAlbumDetails = useCallback(async (id: string, userId: string) => {
+    try {
+      const { data: albumData, error } = await supabase
+        .from('portfolio_albums')
+        .select('*')
+        .eq('id', id)
+        .eq('profile_id', userId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching album:', error)
+        if (error.code === 'PGRST116') {
+          router.push('/dashboard/portfolio')
+        }
+      } else {
+        setAlbum(albumData)
+      }
+    } catch (error) {
+      console.error('Error fetching album:', error)
+    }
+  }, [router, supabase])
+
+  const fetchAlbumPhotos = useCallback(async (id: string) => {
+    try {
+      const { data: photosData, error } = await supabase
+        .from('portfolio_photos')
+        .select('*')
+        .eq('album_id', id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching photos:', error)
+      } else {
+        setPhotos(photosData || [])
+      }
+    } catch (error) {
+      console.error('Error fetching photos:', error)
+    }
+  }, [supabase])
+
   useEffect(() => {
     const checkUserAndFetchData = async () => {
       try {
@@ -69,48 +109,7 @@ export default function AlbumDetailPage({ params }: AlbumDetailPageProps) {
     }
 
     checkUserAndFetchData()
-  }, [params, router, supabase])
-
-  const fetchAlbumDetails = async (id: string, userId: string) => {
-    try {
-      const { data: albumData, error } = await supabase
-        .from('portfolio_albums')
-        .select('*')
-        .eq('id', id)
-        .eq('profile_id', userId)
-        .single()
-
-      if (error) {
-        console.error('Error fetching album:', error)
-        if (error.code === 'PGRST116') {
-          // Album not found or doesn't belong to user
-          router.push('/dashboard/portfolio')
-        }
-      } else {
-        setAlbum(albumData)
-      }
-    } catch (error) {
-      console.error('Error fetching album:', error)
-    }
-  }
-
-  const fetchAlbumPhotos = async (id: string) => {
-    try {
-      const { data: photosData, error } = await supabase
-        .from('portfolio_photos')
-        .select('*')
-        .eq('album_id', id)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching photos:', error)
-      } else {
-        setPhotos(photosData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching photos:', error)
-    }
-  }
+  }, [params, router, supabase, fetchAlbumDetails, fetchAlbumPhotos])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -138,7 +137,6 @@ export default function AlbumDetailPage({ params }: AlbumDetailPageProps) {
 
     try {
       const userId = user.id
-      const fileExtension = selectedFile.name.split('.').pop()
       const fileName = `${userId}/${albumId}/${Date.now()}_${selectedFile.name}`
       
       console.log('Uploading file:', fileName)
@@ -336,7 +334,7 @@ export default function AlbumDetailPage({ params }: AlbumDetailPageProps) {
             onClick={() => router.push('/dashboard')}
             className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           >
-            ← Dashboard'a Dön
+            ← Dashboard&#39;a Dön
           </Button>
         </div>
       </div>
