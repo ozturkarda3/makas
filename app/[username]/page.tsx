@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import BookingModal from '@/components/BookingModal'
 
-export default async function PublicBarberProfilePage({ params }: { params: { username: string } }) {
+export default async function PublicBarberProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const supabase = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
+
+  const { username } = await params
 
   const { data: profile, error } = await supabase
     .from('profiles')
@@ -27,7 +29,7 @@ export default async function PublicBarberProfilePage({ params }: { params: { us
         portfolio_photos:portfolio_photos(id, image_url, caption)
       )
     `)
-    .eq('username', params.username)
+    .eq('username', username)
     .single()
 
   if (error || !profile) {
