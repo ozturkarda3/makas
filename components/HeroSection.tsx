@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function HeroSection() {
   return (
@@ -20,9 +21,11 @@ export default function HeroSection() {
         </p>
         
         {/* Button: Ana eylem butonumuz. shadcn/ui prop'u olan size='lg' ile ve ek sınıflarla daha da büyük ve dikkat çekici. */}
-        <Button size="lg" className="px-8 py-7 text-lg font-bold">
-          Hemen Başla
-        </Button>
+        <Link href="/signup">
+          <Button size="lg" className="px-8 py-7 text-lg font-bold">
+            Hemen Başla
+          </Button>
+        </Link>
 
       </div>
     </section>

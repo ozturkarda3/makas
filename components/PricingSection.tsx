@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
+import Link from "next/link";
 
 export default function PricingSection() {
   return (
     // section: Fiyatlandırma bölümü. Tek ve basit plan ile kullanıcıları karıştırmıyoruz.
-    <section className="py-24 bg-slate-900">
+    <section id="pricing" className="py-24 bg-slate-900">
       
       {/* Container: İçeriği merkezde tutmak ve geniş ekranlarda aşırı yayılmasını engellemek için */}
       <div className="container mx-auto px-4">
@@ -60,9 +61,11 @@ export default function PricingSection() {
             </div>
             
             {/* CTA Button */}
-            <Button className="w-full bg-slate-50 text-slate-950 hover:bg-slate-200 font-bold text-lg py-6">
-              Hemen Başla
-            </Button>
+            <Link href="/signup">
+              <Button className="w-full bg-slate-50 text-slate-950 hover:bg-slate-200 font-bold text-lg py-6">
+                Hemen Başla
+              </Button>
+            </Link>
             
           </div>
         </div>
