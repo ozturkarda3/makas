@@ -5,9 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import BookingModal from '@/components/BookingModal'
 
-type PageProps = { params: { username: string } }
-
-export default async function PublicBarberProfilePage({ params }: PageProps) {
+export default async function PublicBarberProfilePage({ params }: { params: { username: string } }) {
   const supabase = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
