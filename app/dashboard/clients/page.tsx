@@ -28,7 +28,7 @@ interface Client {
 interface ClientFormData {
   name: string
   phone: string
-  notes: string
+  notes?: string
 }
 
 // Form validation schema
