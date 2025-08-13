@@ -222,10 +222,10 @@ export default function CalendarPage() {
                           </span>
                         </div>
                         <div className="text-white font-medium">
-                          {appointment.clients?.[0]?.name || 'Müşteri bilgisi yok'}
+                          {appointment.clients?.name || 'Müşteri bilgisi yok'}
                         </div>
                         <div className="text-slate-400 text-sm">
-                          {appointment.services?.[0]?.name || 'Hizmet bilgisi yok'}
+                          {appointment.services?.name || 'Hizmet bilgisi yok'}
                         </div>
                       </div>
                     ))}
