@@ -87,8 +87,8 @@ export default function CalendarPage() {
           const enrichedAppointments = appointmentsData.map(appointment => ({
             id: appointment.id,
             start_time: appointment.start_time,
-            clients: [{ name: clientsData?.find(c => c.id === appointment.client_id)?.name || 'Bilinmeyen Müşteri' }],
-            services: [{ name: servicesData?.find(s => s.id === appointment.service_id)?.name || 'Bilinmeyen Hizmet' }]
+            clients: { name: clientsData?.find(c => c.id === appointment.client_id)?.name || 'Bilinmeyen Müşteri' },
+            services: { name: servicesData?.find(s => s.id === appointment.service_id)?.name || 'Bilinmeyen Hizmet' }
           }))
 
           console.log('Enriched appointments:', enrichedAppointments)
