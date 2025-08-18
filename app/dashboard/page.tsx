@@ -125,7 +125,7 @@ export default function DashboardPage() {
         console.log('Services data:', servicesData)
 
         // Combine the data
-        const enrichedAppointments = appointmentsData.map(appointment => {
+        const enrichedAppointments: Appointment[] = appointmentsData.map(appointment => {
           const client = clientsData?.find(c => c.id === appointment.client_id)
           const service = servicesData?.find(s => s.id === appointment.service_id)
           return {
@@ -139,7 +139,7 @@ export default function DashboardPage() {
               name: service?.name || 'Bilinmeyen Hizmet',
               price: service?.price || 0
             },
-            status: (appointment as any).status || 'booked'
+            status: (appointment as unknown as { status?: Appointment['status'] }).status || 'booked'
           }
         })
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
@@ -39,6 +39,54 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [isLoading, setIsLoading] = useState(true)
 
+  const loadAppointments = useCallback(async (userId: string) => {
+    const { data: appointmentsData, error: appointmentsError } = await supabase
+      .from('appointments')
+      .select('id, start_time, client_id, service_id, status')
+      .eq('profile_id', userId)
+      .gte('start_time', new Date().toISOString())
+      .order('start_time', { ascending: true })
+
+    if (appointmentsError) {
+      console.error('Error fetching appointments:', appointmentsError)
+      return
+    }
+
+    if (appointmentsData && appointmentsData.length > 0) {
+      const clientIds = appointmentsData.map(apt => apt.client_id).filter(Boolean)
+      const serviceIds = appointmentsData.map(apt => apt.service_id).filter(Boolean)
+
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        .select('id, name')
+        .in('id', clientIds)
+
+      const { data: servicesData, error: servicesError } = await supabase
+        .from('services')
+        .select('id, name')
+        .in('id', serviceIds)
+
+      if (clientsError) console.error('Error fetching clients:', clientsError)
+      if (servicesError) console.error('Error fetching services:', servicesError)
+
+      const enrichedAppointments: Appointment[] = appointmentsData.map(appt => {
+        const client = clientsData?.find(c => c.id === appt.client_id)
+        const service = servicesData?.find(s => s.id === appt.service_id)
+        return {
+          id: appt.id,
+          start_time: appt.start_time,
+          clients: { id: client?.id || appt.client_id || 'unknown', name: client?.name || 'Bilinmeyen Müşteri' },
+          services: { name: service?.name || 'Bilinmeyen Hizmet' },
+          status: appt.status || 'booked'
+        }
+      })
+
+      setAppointments(enrichedAppointments)
+    } else {
+      setAppointments([])
+    }
+  }, [supabase])
+
   useEffect(() => {
     const checkUserAndFetchAppointments = async () => {
       try {
@@ -57,58 +105,7 @@ export default function CalendarPage() {
       }
     }
     checkUserAndFetchAppointments()
-  }, [router, supabase])
-
-  const loadAppointments = async (userId: string) => {
-    // First, fetch appointments including status
-    const { data: appointmentsData, error: appointmentsError } = await supabase
-      .from('appointments')
-      .select('id, start_time, client_id, service_id, status')
-      .eq('profile_id', userId)
-      .gte('start_time', new Date().toISOString())
-      .order('start_time', { ascending: true })
-
-    if (appointmentsError) {
-      console.error('Error fetching appointments:', appointmentsError)
-      return
-    }
-
-    // Then, fetch clients and services separately
-    if (appointmentsData && appointmentsData.length > 0) {
-      const clientIds = appointmentsData.map(apt => apt.client_id).filter(Boolean)
-      const serviceIds = appointmentsData.map(apt => apt.service_id).filter(Boolean)
-
-      const { data: clientsData, error: clientsError } = await supabase
-        .from('clients')
-        .select('id, name')
-        .in('id', clientIds)
-
-      const { data: servicesData, error: servicesError } = await supabase
-        .from('services')
-        .select('id, name')
-        .in('id', serviceIds)
-
-      if (clientsError) console.error('Error fetching clients:', clientsError)
-      if (servicesError) console.error('Error fetching services:', servicesError)
-
-      // Combine the data
-      const enrichedAppointments = appointmentsData.map(appointment => {
-        const client = clientsData?.find(c => c.id === appointment.client_id)
-        const service = servicesData?.find(s => s.id === appointment.service_id)
-        return {
-          id: appointment.id,
-          start_time: appointment.start_time,
-          clients: { id: client?.id || appointment.client_id || 'unknown', name: client?.name || 'Bilinmeyen Müşteri' },
-          services: { name: service?.name || 'Bilinmeyen Hizmet' },
-          status: (appointment as any).status || 'booked'
-        }
-      })
-
-      setAppointments(enrichedAppointments)
-    } else {
-      setAppointments([])
-    }
-  }
+  }, [router, supabase, loadAppointments])
 
   const handleStatusChange = async (appointmentId: string, newStatus: 'completed' | 'cancelled') => {
     try {

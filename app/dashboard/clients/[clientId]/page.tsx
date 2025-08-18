@@ -83,10 +83,14 @@ export default function ClientDetailPage() {
       }
 
       // Normalize arrays to ensure defined
+      const base = data as unknown as Omit<ClientDetail, 'client_notes' | 'appointments'> & {
+        client_notes?: ClientNote[]
+        appointments?: Array<Appointment & { services?: ServiceSummary | null; appointment_notes?: AppointmentNote[] }>
+      }
       const normalized: ClientDetail = {
-        ...(data as any),
-        client_notes: (data?.client_notes || []) as ClientNote[],
-        appointments: ((data?.appointments || []) as any[]).map((a) => ({
+        ...(base as any),
+        client_notes: (base?.client_notes || []) as ClientNote[],
+        appointments: ((base?.appointments || []) as Array<any>).map((a) => ({
           ...a,
           services: a?.services ?? null,
           appointment_notes: (a?.appointment_notes || []) as AppointmentNote[]
@@ -94,7 +98,7 @@ export default function ClientDetailPage() {
       }
 
       setClient(normalized)
-    } catch (e) {
+    } catch {
       setErrorMessage('Beklenmeyen bir hata oluştu.')
       setClient(null)
     } finally {
