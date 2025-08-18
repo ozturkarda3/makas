@@ -15,8 +15,9 @@ import AnalyticsWidget from '@/components/dashboard/AnalyticsWidget'
 interface Appointment {
   id: string
   start_time: string
-  clients: { name: string }
+  clients: { id: string; name: string }
   services: { name: string; price: number }
+  status?: 'booked' | 'completed' | 'cancelled'
 }
 
 // WeeklyData removed as weekly chart is no longer rendered
@@ -86,7 +87,7 @@ export default function DashboardPage() {
       // First, fetch appointments
       const { data: appointmentsData, error: appointmentsError } = await supabase
         .from('appointments')
-        .select('id, start_time, client_id, service_id')
+        .select('id, start_time, client_id, service_id, status')
         .eq('profile_id', userId)
         .gte('start_time', startOfDayISO)
         .lte('start_time', endOfDayISO)
@@ -124,17 +125,23 @@ export default function DashboardPage() {
         console.log('Services data:', servicesData)
 
         // Combine the data
-        const enrichedAppointments = appointmentsData.map(appointment => ({
-          id: appointment.id,
-          start_time: appointment.start_time,
-          clients: { 
-            name: clientsData?.find(c => c.id === appointment.client_id)?.name || 'Bilinmeyen Müşteri' 
-          },
-          services: { 
-            name: servicesData?.find(s => s.id === appointment.service_id)?.name || 'Bilinmeyen Hizmet',
-            price: servicesData?.find(s => s.id === appointment.service_id)?.price || 0
+        const enrichedAppointments = appointmentsData.map(appointment => {
+          const client = clientsData?.find(c => c.id === appointment.client_id)
+          const service = servicesData?.find(s => s.id === appointment.service_id)
+          return {
+            id: appointment.id,
+            start_time: appointment.start_time,
+            clients: { 
+              id: client?.id || appointment.client_id || 'unknown',
+              name: client?.name || 'Bilinmeyen Müşteri'
+            },
+            services: { 
+              name: service?.name || 'Bilinmeyen Hizmet',
+              price: service?.price || 0
+            },
+            status: (appointment as any).status || 'booked'
           }
-        }))
+        })
 
         console.log('Enriched appointments:', enrichedAppointments)
         setTodaysAppointments(enrichedAppointments)
@@ -479,7 +486,7 @@ export default function DashboardPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <TodaysAgenda appointments={todaysAppointments} />
+                  <TodaysAgenda appointments={todaysAppointments} onStatusChange={() => user && fetchTodaysAppointments(user.id)} />
                 </CardContent>
               </Card>
               

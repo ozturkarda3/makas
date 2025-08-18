@@ -2,14 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import { Calendar } from '@/components/ui/calendar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import AddAppointmentModal from '@/components/dashboard/AddAppointmentModal'
+import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { MoreHorizontal } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Client {
+  id: string
   name: string
 }
 
@@ -22,6 +28,7 @@ interface Appointment {
   start_time: string
   clients: Client
   services: Service
+  status?: 'booked' | 'completed' | 'cancelled'
 }
 
 export default function CalendarPage() {
@@ -35,69 +42,13 @@ export default function CalendarPage() {
   useEffect(() => {
     const checkUserAndFetchAppointments = async () => {
       try {
-        // Check if user is logged in
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
           router.push('/login')
           return
         }
-
         setUser(session.user)
-
-        // First, fetch appointments
-        const { data: appointmentsData, error: appointmentsError } = await supabase
-          .from('appointments')
-          .select('id, start_time, client_id, service_id')
-          .eq('profile_id', session.user.id)
-          .gte('start_time', new Date().toISOString())
-          .order('start_time', { ascending: true })
-
-        if (appointmentsError) {
-          console.error('Error fetching appointments:', appointmentsError)
-          return
-        }
-
-        console.log('Raw appointments:', appointmentsData)
-
-        // Then, fetch clients and services separately
-        if (appointmentsData && appointmentsData.length > 0) {
-          const clientIds = appointmentsData.map(apt => apt.client_id).filter(Boolean)
-          const serviceIds = appointmentsData.map(apt => apt.service_id).filter(Boolean)
-
-          console.log('Client IDs:', clientIds)
-          console.log('Service IDs:', serviceIds)
-
-          const { data: clientsData, error: clientsError } = await supabase
-            .from('clients')
-            .select('id, name')
-            .in('id', clientIds)
-
-          const { data: servicesData, error: servicesError } = await supabase
-            .from('services')
-            .select('id, name')
-            .in('id', serviceIds)
-
-          if (clientsError) console.error('Error fetching clients:', clientsError)
-          if (servicesError) console.error('Error fetching services:', servicesError)
-
-          console.log('Clients data:', clientsData)
-          console.log('Services data:', servicesData)
-
-          // Combine the data
-          const enrichedAppointments = appointmentsData.map(appointment => ({
-            id: appointment.id,
-            start_time: appointment.start_time,
-            clients: { name: clientsData?.find(c => c.id === appointment.client_id)?.name || 'Bilinmeyen Müşteri' },
-            services: { name: servicesData?.find(s => s.id === appointment.service_id)?.name || 'Bilinmeyen Hizmet' }
-          }))
-
-          console.log('Enriched appointments:', enrichedAppointments)
-          setAppointments(enrichedAppointments)
-        } else {
-          setAppointments([])
-        }
-
-
+        await loadAppointments(session.user.id)
       } catch (error) {
         console.error('Error:', error)
         router.push('/login')
@@ -105,9 +56,77 @@ export default function CalendarPage() {
         setIsLoading(false)
       }
     }
-
     checkUserAndFetchAppointments()
   }, [router, supabase])
+
+  const loadAppointments = async (userId: string) => {
+    // First, fetch appointments including status
+    const { data: appointmentsData, error: appointmentsError } = await supabase
+      .from('appointments')
+      .select('id, start_time, client_id, service_id, status')
+      .eq('profile_id', userId)
+      .gte('start_time', new Date().toISOString())
+      .order('start_time', { ascending: true })
+
+    if (appointmentsError) {
+      console.error('Error fetching appointments:', appointmentsError)
+      return
+    }
+
+    // Then, fetch clients and services separately
+    if (appointmentsData && appointmentsData.length > 0) {
+      const clientIds = appointmentsData.map(apt => apt.client_id).filter(Boolean)
+      const serviceIds = appointmentsData.map(apt => apt.service_id).filter(Boolean)
+
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        .select('id, name')
+        .in('id', clientIds)
+
+      const { data: servicesData, error: servicesError } = await supabase
+        .from('services')
+        .select('id, name')
+        .in('id', serviceIds)
+
+      if (clientsError) console.error('Error fetching clients:', clientsError)
+      if (servicesError) console.error('Error fetching services:', servicesError)
+
+      // Combine the data
+      const enrichedAppointments = appointmentsData.map(appointment => {
+        const client = clientsData?.find(c => c.id === appointment.client_id)
+        const service = servicesData?.find(s => s.id === appointment.service_id)
+        return {
+          id: appointment.id,
+          start_time: appointment.start_time,
+          clients: { id: client?.id || appointment.client_id || 'unknown', name: client?.name || 'Bilinmeyen Müşteri' },
+          services: { name: service?.name || 'Bilinmeyen Hizmet' },
+          status: (appointment as any).status || 'booked'
+        }
+      })
+
+      setAppointments(enrichedAppointments)
+    } else {
+      setAppointments([])
+    }
+  }
+
+  const handleStatusChange = async (appointmentId: string, newStatus: 'completed' | 'cancelled') => {
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', appointmentId)
+      if (error) {
+        console.error('Status update failed', error)
+        return
+      }
+      if (user) {
+        await loadAppointments(user.id)
+      }
+    } catch (e) {
+      console.error('Unexpected:', e)
+    }
+  }
 
   // Filter appointments for selected date and sort by time
   const getAppointmentsForDate = (date: Date) => {
@@ -208,27 +227,50 @@ export default function CalendarPage() {
               {selectedDate ? (
                 selectedDateAppointments.length > 0 ? (
                   <div className="space-y-4">
-                    {selectedDateAppointments.map((appointment) => (
-                      <div 
-                        key={appointment.id}
-                        className="p-4 bg-slate-800 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-slate-300 font-medium">
-                            {formatTime(appointment.start_time)}
-                          </span>
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
-                            Randevu
-                          </span>
+                    {selectedDateAppointments.map((appointment) => {
+                      const status = appointment.status || 'booked'
+                      return (
+                        <div
+                          key={appointment.id}
+                          className={cn(
+                            'p-4 rounded-lg border transition-colors',
+                            'bg-slate-800 border-slate-700 hover:border-slate-600 hover:bg-slate-800',
+                            status === 'completed' && 'bg-green-900/30 border-l-4 border-green-500',
+                            status === 'cancelled' && 'line-through text-slate-500 opacity-60'
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-slate-300 font-medium">
+                              {formatTime(appointment.start_time)}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
+                                Randevu
+                              </span>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-white">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'completed')}>Tamamlandı Olarak İşaretle</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'cancelled')}>İptal Edildi Olarak İşaretle</DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                          <Link href={`/dashboard/clients/${appointment.clients?.id}`} className="block">
+                            <div className="text-white font-medium">
+                              {appointment.clients?.name || 'Müşteri bilgisi yok'}
+                            </div>
+                            <div className="text-slate-400 text-sm">
+                              {appointment.services?.name || 'Hizmet bilgisi yok'}
+                            </div>
+                          </Link>
                         </div>
-                        <div className="text-white font-medium">
-                          {appointment.clients?.name || 'Müşteri bilgisi yok'}
-                        </div>
-                        <div className="text-slate-400 text-sm">
-                          {appointment.services?.name || 'Hizmet bilgisi yok'}
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8">

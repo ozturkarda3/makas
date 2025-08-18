@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -20,22 +20,20 @@ interface Client {
   id: string
   name: string
   phone: string
-  notes: string | null
   profile_id: string
   created_at: string
+  client_notes?: { content: string; created_at: string }[]
 }
 
 interface ClientFormData {
   name: string
   phone: string
-  notes?: string
 }
 
 // Form validation schema
 const clientSchema = z.object({
   name: z.string().min(1, 'Ad soyad gereklidir'),
-  phone: z.string().min(1, 'Telefon numarası gereklidir').regex(/^[\+]?[0-9\s\-\(\)]+$/, 'Geçerli bir telefon numarası girin'),
-  notes: z.string().optional()
+  phone: z.string().min(1, 'Telefon numarası gereklidir').regex(/^[\+]?[0-9\s\-\(\)]+$/, 'Geçerli bir telefon numarası girin')
 })
 
 export default function ClientsPage() {
@@ -54,8 +52,7 @@ export default function ClientsPage() {
     resolver: zodResolver(clientSchema),
     defaultValues: {
       name: '',
-      phone: '',
-      notes: ''
+      phone: ''
     }
   })
 
@@ -63,7 +60,7 @@ export default function ClientsPage() {
     try {
       const { data: clientsData, error } = await supabase
         .from('clients')
-        .select('*')
+        .select('id, name, phone, profile_id, created_at, client_notes(content, created_at)')
         .eq('profile_id', userId)
         .order('created_at', { ascending: false })
 
@@ -113,8 +110,7 @@ export default function ClientsPage() {
     setEditingClient(client)
     form.reset({
       name: client.name,
-      phone: client.phone,
-      notes: client.notes || ''
+      phone: client.phone
     })
     setIsDialogOpen(true)
   }
@@ -138,8 +134,7 @@ export default function ClientsPage() {
           .from('clients')
           .update({
             name: data.name,
-            phone: data.phone,
-            notes: data.notes || null
+            phone: data.phone
           })
           .eq('id', editingClient.id)
 
@@ -158,7 +153,6 @@ export default function ClientsPage() {
           .insert({
             name: data.name,
             phone: data.phone,
-            notes: data.notes || null,
             profile_id: user.id
           })
 
@@ -290,24 +284,7 @@ export default function ClientsPage() {
                     )}
                   />
                   
-                  <FormField
-                    control={form.control}
-                    name="notes"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-slate-300">Özel Notlar</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            {...field}
-                            placeholder="Müşteri tercihleri, özel istekler..."
-                            rows={3}
-                            className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 resize-none"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* Not field removed. Personal notes are now historical in client detail page. */}
                   
                   <div className="flex justify-end gap-3 pt-4">
                     <Button
@@ -371,15 +348,25 @@ export default function ClientsPage() {
                   {clients.map((client) => (
                     <TableRow key={client.id} className="border-slate-800 hover:bg-slate-800/50">
                       <TableCell className="font-medium text-white">
-                        {client.name}
+                        <Link href={`/dashboard/clients/${client.id}`} className="hover:underline">
+                          {client.name}
+                        </Link>
                       </TableCell>
                       <TableCell className="text-slate-300">
                         {client.phone}
                       </TableCell>
                       <TableCell className="text-slate-300 max-w-xs">
-                        <div className="truncate" title={client.notes || ''}>
-                          {truncateNotes(client.notes)}
-                        </div>
+                        {(() => {
+                          const latest = (client.client_notes || [])
+                            .slice()
+                            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+                          const content = latest?.content || null
+                          return (
+                            <div className="truncate" title={content || ''}>
+                              {truncateNotes(content)}
+                            </div>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
