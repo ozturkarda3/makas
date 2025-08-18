@@ -88,9 +88,9 @@ export default function ClientDetailPage() {
         appointments?: Array<Appointment & { services?: ServiceSummary | null; appointment_notes?: AppointmentNote[] }>
       }
       const normalized: ClientDetail = {
-        ...(base as any),
+        ...base,
         client_notes: (base?.client_notes || []) as ClientNote[],
-        appointments: ((base?.appointments || []) as Array<any>).map((a) => ({
+        appointments: ((base?.appointments || []) as Array<Appointment & { services?: ServiceSummary | null; appointment_notes?: AppointmentNote[] }>).map((a) => ({
           ...a,
           services: a?.services ?? null,
           appointment_notes: (a?.appointment_notes || []) as AppointmentNote[]
