@@ -121,10 +121,9 @@ export default function TeamPage() {
       await fetchPerformanceData(user.id)
     }
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange.from, dateRange.to])
+  }, [dateRange.from, dateRange.to, user, fetchPerformanceData])
 
-  const fetchPerformanceData = async (userId: string) => {
+  const fetchPerformanceData = useCallback(async (userId: string) => {
     try {
       // 1) Fetch staff list
       const { data: staffRows, error: staffError } = await supabase
@@ -138,7 +137,7 @@ export default function TeamPage() {
         return
       }
 
-      const staffIds = (staffRows || []).map((r: { id: string }) => r.id) as string[]
+      const staffIds = (staffRows || []).map((r: { id: string }) => r.id)
 
       // 2) Fetch completed appointments in range with service prices
       const fromIso = dateRange.from.toISOString()
@@ -182,7 +181,7 @@ export default function TeamPage() {
       console.error('Error computing performance:', err)
       setPerformanceData([])
     }
-  }
+  }, [dateRange.from, dateRange.to, supabase])
 
   const closeDialog = () => {
     setIsDialogOpen(false)

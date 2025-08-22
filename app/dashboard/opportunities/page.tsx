@@ -3,20 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import EmptyState from '@/components/ui/EmptyState'
 import { Repeat2, Sparkles } from 'lucide-react'
 import useOpportunities from '@/lib/hooks/useOpportunities'
 
-type Opportunity = {
-  id: string
-  type: 'lapsing' | 'upsell'
-  clientId: string
-  clientName: string
-  phone: string
-  description: string
-}
+// Opportunity type provided by the useOpportunities hook
 
 export default function OpportunitiesPage() {
   const router = useRouter()
