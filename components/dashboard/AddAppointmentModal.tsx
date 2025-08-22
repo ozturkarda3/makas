@@ -22,6 +22,16 @@ interface Service {
   duration: number
 }
 
+interface StaffMember {
+  id: string
+  name: string
+}
+
+interface ProfileLite {
+  id: string
+  full_name: string | null
+}
+
 export default function AddAppointmentModal() {
   const supabase = createClient()
   
@@ -36,25 +46,52 @@ export default function AddAppointmentModal() {
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [services, setServices] = useState<Service[]>([])
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
+  const [profile, setProfile] = useState<ProfileLite | null>(null)
+  const [selectedStaffId, setSelectedStaffId] = useState('')
 
-  // Fetch services on component mount
+  // Fetch services, staff, and owner profile on component mount
   useEffect(() => {
-    const fetchServices = async () => {
+    const fetchInitialData = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user) return
         
-        const { data: servicesData, error } = await supabase
-          .from('services')
-          .select('id, name, price, duration')
-          .eq('profile_id', session.user.id)
-          .order('name')
-        
-        if (error) {
-          console.error('Error fetching services:', error)
+        const [servicesRes, staffRes, profileRes] = await Promise.all([
+          supabase
+            .from('services')
+            .select('id, name, price, duration')
+            .eq('profile_id', session.user.id)
+            .order('name'),
+          supabase
+            .from('staff_members')
+            .select('id, name')
+            .eq('profile_id', session.user.id)
+            .order('name'),
+          supabase
+            .from('profiles')
+            .select('id, full_name')
+            .eq('id', session.user.id)
+            .single(),
+        ])
+
+        if (servicesRes.error) {
+          console.error('Error fetching services:', servicesRes.error)
           toast.error('Hizmetler yüklenirken bir hata oluştu')
         } else {
-          setServices(servicesData || [])
+          setServices(servicesRes.data || [])
+        }
+
+        if (staffRes.error) {
+          console.error('Error fetching staff members:', staffRes.error)
+        } else {
+          setStaffMembers((staffRes.data as StaffMember[]) || [])
+        }
+
+        if (profileRes.error) {
+          console.error('Error fetching profile:', profileRes.error)
+        } else {
+          setProfile((profileRes.data as ProfileLite) || null)
         }
       } catch (error) {
         console.error('Error:', error)
@@ -62,7 +99,7 @@ export default function AddAppointmentModal() {
       }
     }
     
-    fetchServices()
+    fetchInitialData()
   }, [supabase])  
 
 
@@ -201,6 +238,9 @@ export default function AddAppointmentModal() {
         clientId = newClient.id
       }
 
+      // Determine staff_member_id: null if owner selected, else staff id
+      const resolvedStaffMemberId = selectedStaffId && selectedStaffId.startsWith('owner-') ? null : (selectedStaffId || null)
+
       // Create appointment with current table structure
       const { error: appointmentError } = await supabase
         .from('appointments')
@@ -208,7 +248,8 @@ export default function AddAppointmentModal() {
           client_id: clientId,
           service_id: selectedServiceId,
           start_time: appointmentDateTime.toISOString(),
-          profile_id: session.user.id
+          profile_id: session.user.id,
+          staff_member_id: resolvedStaffMemberId,
         })
 
       if (appointmentError) {
@@ -298,6 +339,28 @@ export default function AddAppointmentModal() {
                 {services.map((service) => (
                   <SelectItem key={service.id} value={service.id} className="text-blue-900 hover:bg-blue-50 focus:bg-blue-100">
                     {service.name} - {service.price} TL
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Staff Selection */}
+          <div className="space-y-2">
+            <Label htmlFor="staff" className="text-blue-900">Personel Seçimi</Label>
+            <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
+              <SelectTrigger className="border-blue-900 text-blue-900 focus:border-blue-700 focus:ring-blue-700">
+                <SelectValue placeholder="Personel seçin" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-blue-900">
+                {profile && (
+                  <SelectItem value={`owner-${profile.id}`} className="text-blue-900 hover:bg-blue-50 focus:bg-blue-100">
+                    {profile.full_name || 'İşletme Sahibi'}
+                  </SelectItem>
+                )}
+                {staffMembers.map((s) => (
+                  <SelectItem key={s.id} value={s.id} className="text-blue-900 hover:bg-blue-50 focus:bg-blue-100">
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>

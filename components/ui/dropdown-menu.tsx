@@ -20,7 +20,9 @@ function DropdownMenuContent({ className, align = "end", sideOffset = 8, ...prop
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-hidden",
+          "z-50 min-w-40 rounded-md border p-1 text-popover-foreground shadow-md outline-hidden",
+          // Slightly opaque background for better readability on dark surfaces
+          "bg-slate-900/95 border-white",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           className

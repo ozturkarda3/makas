@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Calendar } from '@/components/ui/calendar'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabaseClient'
 import { format } from 'date-fns'
@@ -18,9 +19,20 @@ type BookingService = {
   duration: number // minutes
 }
 
+type PublicProfile = {
+  id: string
+  full_name?: string | null
+}
+
+type StaffMemberLite = {
+  id: string
+  name: string
+}
+
 interface BookingModalProps {
-  profileId: string
+  profile: PublicProfile
   service: BookingService
+  staffMembers: StaffMemberLite[]
 }
 
 // Generates half-hour time slots between given hours (inclusive start, exclusive end)
@@ -41,20 +53,49 @@ function toDateWithTime(baseDate: Date, timeHHmm: string): Date {
   return d
 }
 
-export default function BookingModal({ profileId, service }: BookingModalProps) {
+export default function BookingModal({ profile, service, staffMembers }: BookingModalProps) {
   const supabase = createClient()
 
   const [isOpen, setIsOpen] = useState(false)
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [selectedTime, setSelectedTime] = useState<string>('')
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [busyIntervals, setBusyIntervals] = useState<Array<{ start: Date; end: Date }>>([])
+  const [busyByResource, setBusyByResource] = useState<Record<string, Array<{ start: Date; end: Date }>>>({})
+  const [localStaffMembers, setLocalStaffMembers] = useState<StaffMemberLite[]>(staffMembers || [])
+  const hasStaffSelection = (localStaffMembers?.length || 0) > 0
+  const [selectedStaff, setSelectedStaff] = useState<string>(hasStaffSelection ? 'any' : 'owner')
 
   // Business hours for public booking (adjust as needed)
   const allSlots = useMemo(() => generateDailySlots(9, 21), [])
+
+  // If staff members weren't available from SSR, attempt a client-side fetch when dialog opens
+  useEffect(() => {
+    const fetchStaffIfNeeded = async () => {
+      if (!isOpen) return
+      if (localStaffMembers.length > 0) return
+      try {
+        const { data, error } = await supabase
+          .from('staff_members')
+          .select('id, name')
+          .eq('profile_id', profile.id)
+        if (error) {
+          console.error('Personel listesi alınamadı:', error)
+          return
+        }
+        if (data && data.length > 0) {
+          setLocalStaffMembers(data as StaffMemberLite[])
+          setSelectedStaff('any')
+          setStep(1)
+        }
+      } catch (err) {
+        console.error('Personel alınırken hata:', err)
+      }
+    }
+    fetchStaffIfNeeded()
+  }, [isOpen, localStaffMembers.length, profile.id, supabase])
 
   // When date changes and dialog is open, fetch existing appointments for that day
   useEffect(() => {
@@ -69,35 +110,40 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
 
         const { data: appointments, error } = await supabase
           .from('appointments')
-          .select(`id, start_time, services:services(duration)`) // need services to know durations
-          .eq('profile_id', profileId)
+          .select(`id, start_time, staff_member_id, services:services(duration)`) // need services to know durations
+          .eq('profile_id', profile.id)
           .gte('start_time', startOfDay.toISOString())
           .lte('start_time', endOfDay.toISOString())
 
         if (error) {
           console.error('Randevu sorgu hatası:', error)
-          setBusyIntervals([])
+          setBusyByResource({})
           return
         }
 
-        const intervals: Array<{ start: Date; end: Date }> = (appointments || []).map((apt: { start_time: string; services?: Array<{ duration: number }> }) => {
+        const next: Record<string, Array<{ start: Date; end: Date }>> = {}
+        for (const apt of (appointments || []) as Array<{ start_time: string; staff_member_id: string | null; services?: Array<{ duration: number }> }>) {
           const start = new Date(apt.start_time)
           const durationMinutes: number = apt.services?.[0]?.duration || 30
           const end = new Date(start)
           end.setMinutes(end.getMinutes() + durationMinutes)
-          return { start, end }
-        })
+          const key = apt.staff_member_id ?? 'owner'
+          if (!next[key]) next[key] = []
+          next[key].push({ start, end })
+        }
 
-        setBusyIntervals(intervals)
+        setBusyByResource(next)
       } catch (err) {
         console.error('Çakışma alınırken hata:', err)
-        setBusyIntervals([])
+        setBusyByResource({})
       }
     }
 
     fetchConflictsForDay()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, isOpen, profileId])
+  }, [selectedDate, isOpen, profile.id])
+
+  const doesOverlap = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) => aStart < bEnd && aEnd > bStart
 
   // Determine if a given slot is available based on service duration and existing busy intervals
   const isSlotAvailable = (slot: string): boolean => {
@@ -111,17 +157,32 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
     const isSameDay = selectedDate.toDateString() === now.toDateString()
     if (isSameDay && start <= now) return false
 
-    // Overlap check: new [start,end] overlaps any busy [b.start,b.end]
-    return !busyIntervals.some(({ start: bStart, end: bEnd }) => start < bEnd && end > bStart)
+    const resources: string[] = ['owner', ...(localStaffMembers?.map(s => s.id) || [])]
+
+    if (selectedStaff === 'any') {
+      return resources.some((key) => {
+        const intervals = busyByResource[key] || []
+        return !intervals.some(({ start: bStart, end: bEnd }) => doesOverlap(start, end, bStart, bEnd))
+      })
+    }
+
+    const key = selectedStaff
+    const intervals = busyByResource[key] || []
+    return !intervals.some(({ start: bStart, end: bEnd }) => doesOverlap(start, end, bStart, bEnd))
   }
 
   const handleTimeSelect = (slot: string) => {
     setSelectedTime(slot)
-    setStep(2)
+    setStep(3)
   }
 
-  const handleBackToStep1 = () => {
-    setStep(1)
+  const handleBack = () => {
+    if (hasStaffSelection) {
+      if (step === 3) setStep(2)
+      else setStep(1)
+    } else {
+      if (step === 3) setStep(2)
+    }
   }
 
   const handleConfirmBooking = async () => {
@@ -140,7 +201,7 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
       const { data: existingClient, error: clientFetchError } = await supabase
         .from('clients')
         .select('id')
-        .eq('profile_id', profileId)
+        .eq('profile_id', profile.id)
         .eq('phone', customerPhone)
         .maybeSingle()
 
@@ -156,7 +217,7 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
       } else {
         const { data: newClient, error: createClientError } = await supabase
           .from('clients')
-          .insert({ name: customerName, phone: customerPhone, profile_id: profileId })
+          .insert({ name: customerName, phone: customerPhone, profile_id: profile.id })
           .select('id')
           .single()
         if (createClientError || !newClient) {
@@ -168,15 +229,37 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
         clientId = newClient.id
       }
 
-      // 2) Create appointment
+      // 2) Determine staff assignment
+      let staffMemberIdToAssign: string | null = null
+      if (selectedStaff === 'owner') {
+        staffMemberIdToAssign = null
+      } else if (selectedStaff === 'any') {
+        const startCopy = new Date(start)
+        const endCopy = new Date(start)
+        endCopy.setMinutes(endCopy.getMinutes() + (service.duration || 30))
+        const resources: Array<string | null> = [null, ...(localStaffMembers?.map(s => s.id) || [])]
+        const available = resources.find((key) => {
+          const resourceKey = key ?? 'owner'
+          const intervals = busyByResource[resourceKey] || []
+          return !intervals.some(({ start: bStart, end: bEnd }) => doesOverlap(startCopy, endCopy, bStart, bEnd))
+        })
+        staffMemberIdToAssign = available ?? null
+      } else {
+        staffMemberIdToAssign = selectedStaff
+      }
+
+      // 3) Create appointment
+      const insertData: Record<string, any> = {
+        client_id: clientId,
+        service_id: service.id,
+        start_time: start.toISOString(),
+        profile_id: profile.id,
+      }
+      insertData['staff_member_id'] = staffMemberIdToAssign
+
       const { error: appointmentError } = await supabase
         .from('appointments')
-        .insert({
-          client_id: clientId,
-          service_id: service.id,
-          start_time: start.toISOString(),
-          profile_id: profileId,
-        })
+        .insert(insertData)
 
       if (appointmentError) {
         console.error('Randevu oluşturma hatası:', appointmentError)
@@ -191,7 +274,7 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
       setSelectedTime('')
       setCustomerName('')
       setCustomerPhone('')
-      setStep(1)
+      setStep(hasStaffSelection ? 1 : 2)
       setIsOpen(false)
     } catch (err) {
       console.error('Booking error:', err)
@@ -205,13 +288,14 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
     setIsOpen(open)
     if (!open) {
       // reset on close
-      setStep(1)
+      setStep(hasStaffSelection ? 1 : 2)
       setSelectedDate(undefined)
       setSelectedTime('')
       setCustomerName('')
       setCustomerPhone('')
-      setBusyIntervals([])
+      setBusyByResource({})
       setIsSubmitting(false)
+      setSelectedStaff(hasStaffSelection ? 'any' : 'owner')
     }
   }
 
@@ -230,7 +314,29 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
           </DialogTitle>
         </DialogHeader>
 
-        {step === 1 && (
+        {/* Step 1: Optional Staff Selection */}
+        {step === 1 && hasStaffSelection && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-slate-800">Personel Seçimi</Label>
+              <Select value={selectedStaff} onValueChange={setSelectedStaff}>
+                <SelectTrigger className="w-full bg-white border-slate-300 text-slate-900">
+                  <SelectValue placeholder="Personel seçin" />
+                </SelectTrigger>
+                <SelectContent className="bg-white text-slate-900 border-slate-300">
+                  <SelectItem value="any">Fark Etmez - Müsait Olan İlk Kişi</SelectItem>
+                  <SelectItem value="owner">{profile.full_name || 'İşletme Sahibi'}</SelectItem>
+                  {localStaffMembers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Date & Time */}
+        {((step === 1 && !hasStaffSelection) || step === 2) && (
           <div className="space-y-4">
             <div>
               <Label className="text-slate-800">Tarih Seçin</Label>
@@ -274,15 +380,14 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
           </div>
         )}
 
-        {step === 2 && (
+        {/* Step 3: Contact Details */}
+        {step === 3 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="text-sm text-slate-600">
                 {selectedDate && `${format(selectedDate, 'PPP', { locale: tr })}`} • {selectedTime}
               </div>
-              <Button variant="outline" className="text-slate-800" onClick={handleBackToStep1}>
-                Geri
-              </Button>
+              <Button variant="outline" className="text-slate-800" onClick={handleBack}>Geri</Button>
             </div>
 
             <div className="space-y-2">
@@ -310,14 +415,30 @@ export default function BookingModal({ profileId, service }: BookingModalProps) 
         )}
 
         <DialogFooter>
-          {step === 1 ? (
-            <Button
-              onClick={() => setStep(2)}
-              disabled={!selectedDate || !selectedTime}
-              className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+          {step === 1 && hasStaffSelection ? (
+            <Button onClick={() => setStep(2)} className="bg-blue-600 text-white hover:bg-blue-500">
               Devam Et
             </Button>
+          ) : ((step === 1 && !hasStaffSelection) || step === 2) ? (
+            <div className="flex items-center gap-3">
+              {step === 2 && hasStaffSelection && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="text-slate-800"
+                  onClick={() => setStep(1)}
+                >
+                  Geri
+                </Button>
+              )}
+              <Button
+                onClick={() => setStep(3)}
+                disabled={!selectedDate || !selectedTime}
+                className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Devam Et
+              </Button>
+            </div>
           ) : (
             <Button
               onClick={handleConfirmBooking}

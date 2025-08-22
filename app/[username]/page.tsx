@@ -18,6 +18,7 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
     .select(`
       id,
       username,
+      full_name,
       business_name,
       about_text,
       cover_image_url,
@@ -27,7 +28,8 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
         id,
         name,
         portfolio_photos:portfolio_photos(id, image_url, caption)
-      )
+      ),
+      staff_members:staff_members!appointments_staff_member_id_fkey(*)
     `)
     .eq('username', username)
     .single()
@@ -41,6 +43,16 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
         </div>
       </div>
     )
+  }
+
+  // Ensure staff members are available for BookingModal step 1
+  let staffMembers: Array<{ id: string; name: string }> = ((profile as any).staff_members || []) as Array<{ id: string; name: string }>
+  if (!staffMembers || staffMembers.length === 0) {
+    const { data: staffFallback } = await supabase
+      .from('staff_members')
+      .select('id, name')
+      .eq('profile_id', profile.id)
+    staffMembers = staffFallback || []
   }
 
   const albums = (profile.portfolio_albums || []) as Array<{
@@ -134,7 +146,8 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
                         </p>
                       </div>
                       <BookingModal
-                        profileId={profile.id}
+                        profile={{ id: profile.id, full_name: (profile as any).full_name }}
+                        staffMembers={staffMembers.map((s: any) => ({ id: s.id, name: s.name }))}
                         service={{
                           id: service.id,
                           name: service.name,

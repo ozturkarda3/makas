@@ -19,15 +19,17 @@ interface Client {
   name: string
 }
 
-interface Service {
-  name: string
-}
+interface Service { name: string }
+interface StaffLite { name?: string | null }
+interface ProfileLite { full_name?: string | null }
 
 interface Appointment {
   id: string
   start_time: string
   clients: Client
   services: Service
+  staff_members?: StaffLite | null
+  profiles?: ProfileLite | null
   status?: 'booked' | 'completed' | 'cancelled'
 }
 
@@ -40,51 +42,29 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   const loadAppointments = useCallback(async (userId: string) => {
-    const { data: appointmentsData, error: appointmentsError } = await supabase
+    const { data, error } = await supabase
       .from('appointments')
-      .select('id, start_time, client_id, service_id, status')
+      .select('*, clients(name), services(name), staff_members!appointments_staff_member_id_fkey(name), profiles(full_name)')
       .eq('profile_id', userId)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true })
 
-    if (appointmentsError) {
-      console.error('Error fetching appointments:', appointmentsError)
+    if (error) {
+      console.error('Error fetching appointments:', error)
       return
     }
 
-    if (appointmentsData && appointmentsData.length > 0) {
-      const clientIds = appointmentsData.map(apt => apt.client_id).filter(Boolean)
-      const serviceIds = appointmentsData.map(apt => apt.service_id).filter(Boolean)
+    const normalized: Appointment[] = (data || []).map((row: any) => ({
+      id: row.id,
+      start_time: row.start_time,
+      clients: { id: row.client_id, name: row.clients?.name || 'Bilinmeyen Müşteri' },
+      services: { name: row.services?.name || 'Bilinmeyen Hizmet' },
+      staff_members: row.staff_members || null,
+      profiles: row.profiles || null,
+      status: row.status || 'booked',
+    }))
 
-      const { data: clientsData, error: clientsError } = await supabase
-        .from('clients')
-        .select('id, name')
-        .in('id', clientIds)
-
-      const { data: servicesData, error: servicesError } = await supabase
-        .from('services')
-        .select('id, name')
-        .in('id', serviceIds)
-
-      if (clientsError) console.error('Error fetching clients:', clientsError)
-      if (servicesError) console.error('Error fetching services:', servicesError)
-
-      const enrichedAppointments: Appointment[] = appointmentsData.map(appt => {
-        const client = clientsData?.find(c => c.id === appt.client_id)
-        const service = servicesData?.find(s => s.id === appt.service_id)
-        return {
-          id: appt.id,
-          start_time: appt.start_time,
-          clients: { id: client?.id || appt.client_id || 'unknown', name: client?.name || 'Bilinmeyen Müşteri' },
-          services: { name: service?.name || 'Bilinmeyen Hizmet' },
-          status: appt.status || 'booked'
-        }
-      })
-
-      setAppointments(enrichedAppointments)
-    } else {
-      setAppointments([])
-    }
+    setAppointments(normalized)
   }, [supabase])
 
   useEffect(() => {
@@ -107,7 +87,7 @@ export default function CalendarPage() {
     checkUserAndFetchAppointments()
   }, [router, supabase, loadAppointments])
 
-  const handleStatusChange = async (appointmentId: string, newStatus: 'completed' | 'cancelled') => {
+  const handleStatusChange = async (appointmentId: string, newStatus: 'booked' | 'completed' | 'cancelled') => {
     try {
       const { error } = await supabase
         .from('appointments')
@@ -253,6 +233,7 @@ export default function CalendarPage() {
                                 <DropdownMenuContent>
                                   <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'completed')}>Tamamlandı Olarak İşaretle</DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'cancelled')}>İptal Edildi Olarak İşaretle</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'booked')}>Rezervasyon Olarak İşaretle</DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -263,6 +244,11 @@ export default function CalendarPage() {
                             </div>
                             <div className="text-slate-400 text-sm">
                               {appointment.services?.name || 'Hizmet bilgisi yok'}
+                            </div>
+                            <div className="text-slate-500 text-xs mt-0.5">
+                              {(appointment.staff_members?.name || appointment.profiles?.full_name) ? (
+                                <span>{appointment.staff_members?.name ?? appointment.profiles?.full_name}</span>
+                              ) : null}
                             </div>
                           </Link>
                         </div>

@@ -21,6 +21,8 @@ interface Appointment {
   start_time: string
   clients: Client
   services: Service
+  staff_members?: { name?: string | null } | null
+  profiles?: { full_name?: string | null } | null
   status?: 'booked' | 'completed' | 'cancelled'
 }
 
@@ -32,7 +34,7 @@ interface TodaysAgendaProps {
 export default function TodaysAgenda({ appointments, onStatusChange }: TodaysAgendaProps) {
   const supabase = createClient()
 
-  const handleStatusChange = async (appointmentId: string, newStatus: 'completed' | 'cancelled') => {
+  const handleStatusChange = async (appointmentId: string, newStatus: 'booked' | 'completed' | 'cancelled') => {
     try {
       const { error } = await supabase
         .from('appointments')
@@ -81,56 +83,67 @@ export default function TodaysAgenda({ appointments, onStatusChange }: TodaysAge
             <AddAppointmentModal />
           </div>
         ) : (
-          <div className="space-y-3">
-            {appointments.map((appointment) => {
-              const status = appointment.status || 'booked'
-              return (
-                <div
-                  key={appointment.id}
-                  className={cn(
-                    'flex items-center justify-between p-3 rounded-lg border transition-colors',
-                    'bg-slate-800 border-slate-700 hover:border-slate-600 hover:bg-slate-800',
-                    status === 'completed' && 'bg-green-900/30 border-l-4 border-green-500',
-                    status === 'cancelled' && 'line-through text-slate-500 opacity-60'
-                  )}
-                >
-                  {/* Time */}
-                  <div className="flex-shrink-0">
-                    <span className="text-slate-300 font-medium text-sm">
-                      {formatTime(appointment.start_time)}
-                    </span>
+          <div className="max-h-[400px] overflow-y-auto">
+            <div className="space-y-3">
+              {appointments.map((appointment) => {
+                const status = appointment.status || 'booked'
+                return (
+                  <div
+                    key={appointment.id}
+                    className={cn(
+                      'flex items-center justify-between px-3 py-3 transition-colors rounded-md',
+                      // Subtle divider between items
+                      'border-b border-slate-800 last:border-b-0',
+                      'hover:bg-slate-800/40',
+                      // Status styles
+                      status === 'completed' && 'opacity-50',
+                      status === 'cancelled' && 'line-through text-slate-500'
+                    )}
+                  >
+                    {/* Time */}
+                    <div className="flex-shrink-0">
+                      <span className="text-slate-300 font-medium text-sm">
+                        {formatTime(appointment.start_time)}
+                      </span>
+                    </div>
+                    
+                    {/* Client and Service Info */}
+                    <div className="flex-1 ml-4 min-w-0">
+                      <Link href={`/dashboard/clients/${appointment.clients.id}`} className="block">
+                        <div className="font-semibold text-slate-100 text-sm truncate">
+                          {appointment.clients.name}
+                        </div>
+                        <div className="text-slate-400 text-xs truncate">
+                          {appointment.services.name}
+                        </div>
+                        <div className="text-slate-500 text-[11px] mt-0.5 truncate">
+                          {(appointment.staff_members?.name || appointment.profiles?.full_name) ? (
+                            <span>{appointment.staff_members?.name ?? appointment.profiles?.full_name}</span>
+                          ) : null}
+                        </div>
+                      </Link>
+                    </div>
+                    
+                    {/* Status indicator + actions */}
+                    <div className="flex-shrink-0 ml-3 flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${status === 'cancelled' ? 'bg-red-500' : status === 'completed' ? 'bg-slate-400' : 'bg-green-400'}`}></div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-white">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'completed')}>Tamamlandı Olarak İşaretle</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'cancelled')}>İptal Edildi Olarak İşaretle</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'booked')}>Rezervasyon Olarak İşaretle</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  
-                  {/* Client and Service Info */}
-                  <div className="flex-1 ml-4 min-w-0">
-                    <Link href={`/dashboard/clients/${appointment.clients.id}`} className="block">
-                      <div className="text-white font-medium text-sm truncate">
-                        {appointment.clients.name}
-                      </div>
-                      <div className="text-slate-400 text-xs truncate">
-                        {appointment.services.name}
-                      </div>
-                    </Link>
-                  </div>
-                  
-                  {/* Status indicator + actions */}
-                  <div className="flex-shrink-0 ml-3 flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${status === 'cancelled' ? 'bg-red-500' : status === 'completed' ? 'bg-slate-400' : 'bg-green-400'}`}></div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-white">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'completed')}>Tamamlandı Olarak İşaretle</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleStatusChange(appointment.id, 'cancelled')}>İptal Edildi Olarak İşaretle</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         )}
       </CardContent>

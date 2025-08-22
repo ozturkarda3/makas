@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { createClient } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
+import { Bell } from 'lucide-react'
 
 export default function Navbar() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -168,6 +169,10 @@ export default function Navbar() {
                   </Button>
                 </Link>
                 
+                <Button variant="ghost" size="icon" aria-label="Notifications" className="text-slate-300 hover:text-slate-50 hover:bg-slate-800/50">
+                  <Bell className="h-5 w-5" />
+                </Button>
+
                 <Button 
                   className="bg-slate-50 text-slate-950 hover:bg-slate-200 font-medium"
                   onClick={() => router.push('/dashboard/profile')}

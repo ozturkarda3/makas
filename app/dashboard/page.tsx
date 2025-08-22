@@ -1,22 +1,26 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import type { User } from '@supabase/supabase-js'
 import { CalendarDays, DollarSign, Users, Calendar, Edit, Scissors, BookUser, Image as ImageIcon } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import StatCard from '@/components/dashboard/StatCard'
 import TodaysAgenda from '@/components/dashboard/TodaysAgenda'
 import AddAppointmentModal from '@/components/dashboard/AddAppointmentModal'
 import AnalyticsWidget from '@/components/dashboard/AnalyticsWidget'
+import OpportunityBanner from '../../components/dashboard/OpportunityBanner'
+import useOpportunities from '@/lib/hooks/useOpportunities'
 
 interface Appointment {
   id: string
   start_time: string
   clients: { id: string; name: string }
   services: { name: string; price: number }
+  staff_members?: { name?: string | null } | null
+  profiles?: { full_name?: string | null } | null
   status?: 'booked' | 'completed' | 'cancelled'
 }
 
@@ -53,6 +57,7 @@ export default function DashboardPage() {
   const [rawClients, setRawClients] = useState<RawClient[]>([])
   const [timeRange, setTimeRange] = useState('7d')
   const [isLoading, setIsLoading] = useState(true)
+  const { opportunities } = useOpportunities()
 
   // Initial load effect is placed after callback definitions
 
@@ -76,95 +81,43 @@ export default function DashboardPage() {
 
   const fetchTodaysAppointments = useCallback(async (userId: string) => {
     try {
-      // Get today's date range (start and end of day)
       const today = new Date()
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
-      
-      const startOfDayISO = startOfDay.toISOString()
-      const endOfDayISO = endOfDay.toISOString()
 
-      // First, fetch appointments
-      const { data: appointmentsData, error: appointmentsError } = await supabase
+      const { data, error } = await supabase
         .from('appointments')
-        .select('id, start_time, client_id, service_id, status')
+        .select('*, clients(name), services(name, price), staff_members!appointments_staff_member_id_fkey(name), profiles(full_name)')
         .eq('profile_id', userId)
-        .gte('start_time', startOfDayISO)
-        .lte('start_time', endOfDayISO)
+        .gte('start_time', startOfDay.toISOString())
+        .lte('start_time', endOfDay.toISOString())
         .order('start_time', { ascending: true })
 
-      if (appointmentsError) {
-        console.error('Error fetching appointments:', appointmentsError)
+      if (error) {
+        console.error('Error fetching appointments:', error)
         return
       }
 
-      console.log('Raw appointments:', appointmentsData)
+      const enrichedAppointments: Appointment[] = (data || []).map((row: any) => ({
+        id: row.id,
+        start_time: row.start_time,
+        clients: { id: row.client_id, name: row.clients?.name || 'Bilinmeyen Müşteri' },
+        services: { name: row.services?.name || 'Bilinmeyen Hizmet', price: row.services?.price || 0 },
+        staff_members: row.staff_members || null,
+        profiles: row.profiles || null,
+        status: row.status || 'booked',
+      }))
 
-      // Then, fetch clients and services separately
-      if (appointmentsData && appointmentsData.length > 0) {
-        const clientIds = appointmentsData.map(apt => apt.client_id).filter(Boolean)
-        const serviceIds = appointmentsData.map(apt => apt.service_id).filter(Boolean)
-
-        console.log('Client IDs:', clientIds)
-        console.log('Service IDs:', serviceIds)
-
-        const { data: clientsData, error: clientsError } = await supabase
-          .from('clients')
-          .select('id, name')
-          .in('id', clientIds)
-
-        const { data: servicesData, error: servicesError } = await supabase
-          .from('services')
-          .select('id, name, price')
-          .in('id', serviceIds)
-
-        if (clientsError) console.error('Error fetching clients:', clientsError)
-        if (servicesError) console.error('Error fetching services:', servicesError)
-
-        console.log('Clients data:', clientsData)
-        console.log('Services data:', servicesData)
-
-        // Combine the data
-        const enrichedAppointments: Appointment[] = appointmentsData.map(appointment => {
-          const client = clientsData?.find(c => c.id === appointment.client_id)
-          const service = servicesData?.find(s => s.id === appointment.service_id)
-          return {
-            id: appointment.id,
-            start_time: appointment.start_time,
-            clients: { 
-              id: client?.id || appointment.client_id || 'unknown',
-              name: client?.name || 'Bilinmeyen Müşteri'
-            },
-            services: { 
-              name: service?.name || 'Bilinmeyen Hizmet',
-              price: service?.price || 0
-            },
-            status: (appointment as unknown as { status?: Appointment['status'] }).status || 'booked'
-          }
-        })
-
-        console.log('Enriched appointments:', enrichedAppointments)
-        setTodaysAppointments(enrichedAppointments)
-        
-        // Calculate today's revenue from services
-        const todaysRevenue = enrichedAppointments.reduce((total, appointment) => {
-          return total + (appointment.services.price || 0)
-        }, 0)
+      setTodaysAppointments(enrichedAppointments)
+      const todaysRevenue = enrichedAppointments.reduce((total, appointment) => total + (appointment.services.price || 0), 0)
 
         // Update stats
         setStats(prev => ({
           ...prev,
-          todaysAppointments: appointmentsData?.length || 0,
+          todaysAppointments: enrichedAppointments.length,
           todaysExpectedRevenue: todaysRevenue
         }))
-      } else {
-        setTodaysAppointments([])
-        setStats(prev => ({
-          ...prev,
-          todaysAppointments: 0,
-          todaysExpectedRevenue: 0
-        }))
-      }
+      
     } catch (error) {
       console.error('Error fetching appointments:', error)
     }
@@ -250,6 +203,14 @@ export default function DashboardPage() {
       console.error('Error fetching analytics data:', error)
     }
   }, [supabase, timeRange])
+
+  // Identify highest-priority opportunity (currently: lapsing client)
+  const topOpportunity = useMemo(() => {
+    if (!opportunities || opportunities.length === 0) return null
+    // Priority: lapsing first, else first available
+    const lapsing = opportunities.find((o) => o.type === 'lapsing')
+    return lapsing || opportunities[0] || null
+  }, [opportunities])
 
   // Helper function to process analytics data with advanced aggregation
   const processAnalyticsData = (
@@ -438,7 +399,7 @@ export default function DashboardPage() {
         await Promise.all([
           fetchTodaysAppointments(session.user.id),
           fetchTotalClients(session.user.id),
-          fetchAnalyticsData(session.user.id)
+          fetchAnalyticsData(session.user.id),
         ])
       } catch (error) {
         console.error('Error:', error)
@@ -467,6 +428,12 @@ export default function DashboardPage() {
           </h1>
           <button onClick={handleLogout} className="text-slate-400 hover:text-white">Çıkış Yap</button>
         </div>
+
+        {topOpportunity && (
+          <div className="mb-6">
+            <OpportunityBanner opportunity={{ text: topOpportunity.description }} />
+          </div>
+        )}
         
         <p className="text-lg text-slate-300 mb-8">
           Hoş geldin, <span className="font-bold text-white">{user.email}</span>! İşletmeni buradan yönetebilirsin.
@@ -511,21 +478,41 @@ export default function DashboardPage() {
                   <CardTitle className="text-lg font-semibold text-white">Hızlı Bakış</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <StatCard 
-                    title="Bugünkü Randevu Sayısı" 
-                    value={stats.todaysAppointments}
-                    icon={<CalendarDays className="h-6 w-6 text-slate-400" />}
-                  />
-                  <StatCard 
-                    title="Bugünkü Beklenen Kazanç" 
-                    value={`${stats.todaysExpectedRevenue.toFixed(0)} TL`}
-                    icon={<DollarSign className="h-6 w-6 text-slate-400" />}
-                  />
-                  <StatCard 
-                    title="Toplam Müşteri Sayısı" 
-                    value={stats.totalClients}
-                    icon={<Users className="h-6 w-6 text-slate-400" />}
-                  />
+                  <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                    <CardHeader className="p-0">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-slate-400" />
+                        <CardTitle className="text-slate-300 text-sm font-medium">Bugünkü Randevu Sayısı</CardTitle>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0 pt-2">
+                      <div className="text-3xl font-bold text-white">{stats.todaysAppointments}</div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                    <CardHeader className="p-0">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-slate-400" />
+                        <CardTitle className="text-slate-300 text-sm font-medium">Bugünkü Beklenen Kazanç</CardTitle>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0 pt-2">
+                      <div className="text-3xl font-bold text-white">{`${stats.todaysExpectedRevenue.toFixed(0)} TL`}</div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                    <CardHeader className="p-0">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-slate-400" />
+                        <CardTitle className="text-slate-300 text-sm font-medium">Toplam Müşteri Sayısı</CardTitle>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0 pt-2">
+                      <div className="text-3xl font-bold text-white">{stats.totalClients}</div>
+                    </CardContent>
+                  </Card>
                 </CardContent>
               </Card>
               
@@ -599,6 +586,19 @@ export default function DashboardPage() {
                         <p className="text-slate-400 text-sm">Müşteri bilgilerini yönet</p>
                       </div>
                     </div>
+                  </Link>
+
+                  {/* Team Management Card */}
+                  <Link href="/dashboard/team" className="block">
+                    <Card className="bg-slate-900 border-slate-800 hover:bg-slate-800/50 hover:border-slate-700 transition-colors">
+                      <CardHeader>
+                        <Users className="h-6 w-6 text-slate-400 mb-2" />
+                        <CardTitle className="text-white text-lg">Ekibim</CardTitle>
+                        <CardDescription className="text-slate-400">
+                          Personelini yönet, performanslarını ve primlerini takip et.
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
                   </Link>
                   
                 </CardContent>
