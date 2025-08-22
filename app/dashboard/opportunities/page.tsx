@@ -76,7 +76,7 @@ export default function OpportunitiesPage() {
                 <CardContent className="flex items-center justify-between gap-3">
                   <p className="text-slate-300 text-sm">{opp.description}</p>
                   <Button asChild className="bg-emerald-500/90 text-slate-950 hover:bg-emerald-400/90">
-                    <a href={buildWhatsAppLink(opp.phone, opp.description)} target="_blank" rel="noopener noreferrer">
+                    <a href={buildWhatsAppLink(opp.phone ?? '', opp.description)} target="_blank" rel="noopener noreferrer">
                       WhatsApp ile Yaz
                     </a>
                   </Button>
