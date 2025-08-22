@@ -54,7 +54,16 @@ export default function CalendarPage() {
       return
     }
 
-    const normalized: Appointment[] = (data || []).map((row: any) => ({
+    const normalized: Appointment[] = (data || []).map((row: {
+      id: string
+      start_time: string
+      client_id: string
+      clients?: { name?: string | null } | null
+      services?: { name?: string | null } | null
+      staff_members?: StaffLite | null
+      profiles?: ProfileLite | null
+      status?: Appointment['status']
+    }) => ({
       id: row.id,
       start_time: row.start_time,
       clients: { id: row.client_id, name: row.clients?.name || 'Bilinmeyen Müşteri' },

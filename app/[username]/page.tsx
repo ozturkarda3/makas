@@ -46,7 +46,8 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
   }
 
   // Ensure staff members are available for BookingModal step 1
-  let staffMembers: Array<{ id: string; name: string }> = ((profile as any).staff_members || []) as Array<{ id: string; name: string }>
+  type StaffLite = { id: string; name: string }
+  let staffMembers: StaffLite[] = (profile as unknown as { staff_members?: StaffLite[] }).staff_members || []
   if (!staffMembers || staffMembers.length === 0) {
     const { data: staffFallback } = await supabase
       .from('staff_members')
@@ -146,8 +147,8 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
                         </p>
                       </div>
                       <BookingModal
-                        profile={{ id: profile.id, full_name: (profile as any).full_name }}
-                        staffMembers={staffMembers.map((s: any) => ({ id: s.id, name: s.name }))}
+                        profile={{ id: profile.id, full_name: (profile as { full_name?: string | null }).full_name }}
+                        staffMembers={staffMembers.map((s: StaffLite) => ({ id: s.id, name: s.name }))}
                         service={{
                           id: service.id,
                           name: service.name,
