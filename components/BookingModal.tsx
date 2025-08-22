@@ -249,7 +249,7 @@ export default function BookingModal({ profile, service, staffMembers }: Booking
       }
 
       // 3) Create appointment
-      const insertData: Record<string, any> = {
+      const insertData: Record<string, string | null> & { client_id: string | null; service_id: string; start_time: string; profile_id: string } = {
         client_id: clientId,
         service_id: service.id,
         start_time: start.toISOString(),

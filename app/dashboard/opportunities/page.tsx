@@ -99,7 +99,7 @@ export default function OpportunitiesPage() {
             onClick={() => router.push('/dashboard')}
             className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           >
-            ← Dashboard'a Dön
+            ← Dashboard&apos;a Dön
           </Button>
         </div>
       </div>

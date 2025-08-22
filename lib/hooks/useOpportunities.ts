@@ -122,11 +122,9 @@ export function useOpportunities() {
         ])
 
         if (clientsError) {
-          // eslint-disable-next-line no-console
           console.error('useOpportunities: clients fetch error', clientsError)
         }
         if (apptsError) {
-          // eslint-disable-next-line no-console
           console.error('useOpportunities: appointments fetch error', apptsError)
         }
 
@@ -135,7 +133,6 @@ export function useOpportunities() {
         const ops = findOpportunities(clientRows, apptRows)
         setOpportunities(ops)
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('useOpportunities error', err)
         setOpportunities([])
       } finally {

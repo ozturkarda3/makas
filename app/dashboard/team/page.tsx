@@ -79,7 +79,7 @@ export default function TeamPage() {
         return
       }
 
-      const normalized = (data || []).map((row: any) => ({
+      const normalized = (data || []).map((row: { id: string; name: string; role: string; comission_rate: number | string | null; profile_id: string; created_at?: string }) => ({
         id: row.id,
         name: row.name,
         role: row.role,
@@ -113,7 +113,7 @@ export default function TeamPage() {
       }
     }
     run()
-  }, [router, supabase, fetchStaff])
+  }, [router, supabase, fetchStaff, fetchPerformanceData])
 
   useEffect(() => {
     const load = async () => {
@@ -138,7 +138,7 @@ export default function TeamPage() {
         return
       }
 
-      const staffIds = (staffRows || []).map((r: any) => r.id) as string[]
+      const staffIds = (staffRows || []).map((r: { id: string }) => r.id) as string[]
 
       // 2) Fetch completed appointments in range with service prices
       const fromIso = dateRange.from.toISOString()
