@@ -57,7 +57,7 @@ export default function TeamPage() {
   type StaffPerformance = { staff_id: string; appointmentCount: number; totalRevenue: number }
   const [performanceData, setPerformanceData] = useState<StaffPerformance[]>([])
 
-  const form = useForm<StaffFormData>({
+  const form = useForm({
     resolver: zodResolver(staffSchema),
     defaultValues: {
       name: '',
@@ -65,63 +65,6 @@ export default function TeamPage() {
       commission_rate: 0.4,
     },
   })
-
-  const fetchStaff = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('staff_members')
-        .select('id, name, role, comission_rate, profile_id, created_at')
-        .eq('profile_id', userId)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching staff members:', error)
-        return
-      }
-
-      const normalized = (data || []).map((row: { id: string; name: string; role: string; comission_rate: number | string | null; profile_id: string; created_at?: string }) => ({
-        id: row.id,
-        name: row.name,
-        role: row.role,
-        commission_rate: typeof row.comission_rate === 'number' ? row.comission_rate : Number(row.comission_rate ?? 0),
-        profile_id: row.profile_id,
-        created_at: row.created_at,
-      })) as StaffMember[]
-
-      setStaff(normalized)
-    } catch (err) {
-      console.error('Error fetching staff members:', err)
-    }
-  }, [supabase])
-
-  useEffect(() => {
-    const run = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          router.push('/login')
-          return
-        }
-        setUser(session.user)
-        await fetchStaff(session.user.id)
-        await fetchPerformanceData(session.user.id)
-      } catch (error) {
-        console.error('Error:', error)
-        router.push('/login')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    run()
-  }, [router, supabase, fetchStaff, fetchPerformanceData])
-
-  useEffect(() => {
-    const load = async () => {
-      if (!user) return
-      await fetchPerformanceData(user.id)
-    }
-    load()
-  }, [dateRange.from, dateRange.to, user, fetchPerformanceData])
 
   const fetchPerformanceData = useCallback(async (userId: string) => {
     try {
@@ -183,12 +126,71 @@ export default function TeamPage() {
     }
   }, [dateRange.from, dateRange.to, supabase])
 
+  const fetchStaff = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('staff_members')
+        .select('id, name, role, comission_rate, profile_id, created_at')
+        .eq('profile_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching staff members:', error)
+        return
+      }
+
+      const normalized = (data || []).map((row: { id: string; name: string; role: string; comission_rate: number | string | null; profile_id: string; created_at?: string }) => ({
+        id: row.id,
+        name: row.name,
+        role: row.role,
+        commission_rate: typeof row.comission_rate === 'number' ? row.comission_rate : Number(row.comission_rate ?? 0),
+        profile_id: row.profile_id,
+        created_at: row.created_at,
+      })) as StaffMember[]
+
+      setStaff(normalized)
+    } catch (err) {
+      console.error('Error fetching staff members:', err)
+    }
+  }, [supabase])
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          router.push('/login')
+          return
+        }
+        setUser(session.user)
+        await fetchStaff(session.user.id)
+        await fetchPerformanceData(session.user.id)
+      } catch (error) {
+        console.error('Error:', error)
+        router.push('/login')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    run()
+  }, [router, supabase, fetchStaff, fetchPerformanceData])
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return
+      await fetchPerformanceData(user.id)
+    }
+    load()
+  }, [dateRange.from, dateRange.to, user, fetchPerformanceData])
+
+  // removed duplicate fetchPerformanceData2
+
   const closeDialog = () => {
     setIsDialogOpen(false)
     form.reset()
   }
 
-  const onSubmit = async (data: StaffFormData) => {
+  const onSubmit = async (data: { name: string; role: string; commission_rate: number }) => {
     if (!user) return
     setIsSubmitting(true)
     try {
@@ -284,7 +286,7 @@ export default function TeamPage() {
                       <FormItem>
                         <FormLabel className="text-slate-300">Prim Oranı (0 - 1)</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" min="0" max="1" {...field} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500" />
+                          <Input type="number" step="0.01" min="0" max="1" {...field} value={Number(field.value) ?? 0} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -337,7 +339,7 @@ export default function TeamPage() {
                   <Calendar
                     mode="range"
                     selected={dateRange}
-                    onSelect={(range: any) => {
+                    onSelect={(range: { from?: Date; to?: Date } | undefined) => {
                       if (!range) return
                       const from = range.from ? new Date(range.from) : dateRange.from
                       const to = range.to ? new Date(range.to) : dateRange.to
