@@ -36,8 +36,6 @@ const staffSchema = z.object({
   commission_rate: z.coerce.number().min(0, '0 ile 1 arasında olmalı').max(1, '0 ile 1 arasında olmalı'),
 })
 
-type StaffFormData = z.infer<typeof staffSchema>
-
 export default function TeamPage() {
   const router = useRouter()
   const supabase = createClient()
