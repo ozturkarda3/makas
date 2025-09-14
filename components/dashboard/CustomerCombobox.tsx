@@ -118,7 +118,9 @@ export default function CustomerCombobox({ onSelectClient, defaultClientId = nul
             onKeyDown={(e) => {
               if (e.key === 'Enter' && allowCreate && query.trim().length > 0) {
                 e.preventDefault()
-                onCreateClient && onCreateClient(query.trim())
+                if (onCreateClient) {
+                  onCreateClient(query.trim())
+                }
                 setOpen(false)
                 setQuery('')
               }
@@ -136,7 +138,9 @@ export default function CustomerCombobox({ onSelectClient, defaultClientId = nul
                 <button
                   type="button"
                   onClick={() => {
-                    onCreateClient && onCreateClient(query.trim())
+                    if (onCreateClient) {
+                      onCreateClient(query.trim())
+                    }
                     setOpen(false)
                     setQuery('')
                   }}
@@ -171,7 +175,9 @@ export default function CustomerCombobox({ onSelectClient, defaultClientId = nul
                   <button
                     type="button"
                     onClick={() => {
-                      onCreateClient && onCreateClient(query.trim())
+                      if (onCreateClient) {
+                        onCreateClient(query.trim())
+                      }
                       setOpen(false)
                       setQuery('')
                     }}

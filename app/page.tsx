@@ -14,7 +14,7 @@ export default function Home() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        await supabase.auth.getSession()
         // Do not redirect; allow logged-in users to remain on landing page
       } catch (error) {
         console.error('Auth check error:', error)

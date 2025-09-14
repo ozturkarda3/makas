@@ -15,6 +15,76 @@ import BusinessOverviewWidget from '@/components/dashboard/BusinessOverviewWidge
 import OpportunityBanner from '../../components/dashboard/OpportunityBanner'
 import useOpportunities from '@/lib/hooks/useOpportunities'
 
+// Pure helper: process analytics data based on time range
+function processAnalyticsData(
+  appointments: Array<{
+    id: string
+    start_time: string
+    status?: string | null
+    client_id: string
+    service_id?: string | null
+    staff_member_id?: string | null
+    service_name?: string
+    service_price?: number
+    staff_name?: string
+  }>,
+  clients: Array<{ id: string; created_at: string }>,
+  timeRange: '7d' | '30d' | '6m'
+) {
+  const today = new Date()
+  let start = new Date(today)
+  const end = new Date(today)
+  if (timeRange === '7d') {
+    start.setDate(today.getDate() - 6)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (timeRange === '30d') {
+    start.setDate(today.getDate() - 29)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else {
+    start = new Date(today.getFullYear(), today.getMonth() - 5, 1, 0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  }
+
+  const inRange = appointments.filter(a => {
+    const d = new Date(a.start_time)
+    return d >= start && d <= end
+  })
+
+  const completed = inRange.filter(a => (a.status ?? 'booked') === 'completed')
+
+  const serviceRevenue = new Map<string, { name: string; revenue: number }>()
+  const staffRevenue = new Map<string, { name: string; revenue: number }>()
+
+  completed.forEach(a => {
+    const price = a.service_price || 0
+    const sKey = a.service_id || 'unknown'
+    const sName = a.service_name || 'Bilinmeyen Hizmet'
+    serviceRevenue.set(sKey, { name: sName, revenue: (serviceRevenue.get(sKey)?.revenue || 0) + price })
+
+    const stKey = a.staff_member_id || 'owner'
+    const stName = a.staff_name || 'İşletme Sahibi'
+    staffRevenue.set(stKey, { name: stName, revenue: (staffRevenue.get(stKey)?.revenue || 0) + price })
+  })
+
+  const clientsCreated = new Map<string, Date>(clients.map(c => [c.id, new Date(c.created_at)]))
+  let newCustomers = 0
+  let returningCustomers = 0
+  const distinctClientIds = new Set(inRange.map(a => a.client_id))
+  distinctClientIds.forEach(id => {
+    const created = clientsCreated.get(id)
+    if (created && created >= start && created <= end) newCustomers += 1
+    else returningCustomers += 1
+  })
+
+  return {
+    topServices: Array.from(serviceRevenue.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
+    topStaff: Array.from(staffRevenue.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
+    customerStats: { newCustomers, returningCustomers },
+  }
+}
+
 interface Appointment {
   id: string
   start_time: string
@@ -230,16 +300,7 @@ export default function DashboardPage() {
       setRawAppointments(normalizedAppointments)
       setRawClients((allClients || []) as RawClient[])
       
-      // Process the data for analytics based on current business overview range
-      const processedData = processAnalyticsData(
-        normalizedAppointments,
-        (allClients || []) as RawClient[],
-        businessOverviewTimeRange
-      )
-      
-      setOverviewTopServices(processedData.topServices)
-      setOverviewTopStaff(processedData.topStaff)
-      setOverviewCustomers(processedData.customerStats)
+      // Do not process here; reprocessed in separate effect when raw data/timeRange changes
 
     } catch (error) {
       console.error('Error fetching analytics data:', error)
@@ -308,65 +369,7 @@ export default function DashboardPage() {
     return lapsing || opportunities[0] || null
   }, [opportunities])
 
-  // Helper function to process analytics data with advanced aggregation
-  const processAnalyticsData = (
-    appointments: RawAppointment[],
-    clients: RawClient[],
-    timeRange: '7d' | '30d' | '6m'
-  ) => {
-    const today = new Date()
-    let start = new Date(today)
-    const end = new Date(today)
-    if (timeRange === '7d') {
-      start.setDate(today.getDate() - 6)
-      start.setHours(0, 0, 0, 0)
-      end.setHours(23, 59, 59, 999)
-    } else if (timeRange === '30d') {
-      start.setDate(today.getDate() - 29)
-      start.setHours(0, 0, 0, 0)
-      end.setHours(23, 59, 59, 999)
-    } else {
-      start = new Date(today.getFullYear(), today.getMonth() - 5, 1, 0, 0, 0, 0)
-      end.setHours(23, 59, 59, 999)
-    }
-
-    const inRange = appointments.filter(a => {
-      const d = new Date(a.start_time)
-      return d >= start && d <= end
-    })
-
-    const completed = inRange.filter(a => (a.status ?? 'booked') === 'completed')
-
-    const serviceRevenue = new Map<string, { name: string; revenue: number }>()
-    const staffRevenue = new Map<string, { name: string; revenue: number }>()
-
-    completed.forEach(a => {
-      const price = a.service_price || 0
-      const sKey = a.service_id || 'unknown'
-      const sName = a.service_name || 'Bilinmeyen Hizmet'
-      serviceRevenue.set(sKey, { name: sName, revenue: (serviceRevenue.get(sKey)?.revenue || 0) + price })
-
-      const stKey = a.staff_member_id || 'owner'
-      const stName = a.staff_name || 'İşletme Sahibi'
-      staffRevenue.set(stKey, { name: stName, revenue: (staffRevenue.get(stKey)?.revenue || 0) + price })
-    })
-
-    const clientsCreated = new Map<string, Date>(clients.map(c => [c.id, new Date(c.created_at)]))
-    let newCustomers = 0
-    let returningCustomers = 0
-    const distinctClientIds = new Set(inRange.map(a => a.client_id))
-    distinctClientIds.forEach(id => {
-      const created = clientsCreated.get(id)
-      if (created && created >= start && created <= end) newCustomers += 1
-      else returningCustomers += 1
-    })
-
-    return {
-      topServices: Array.from(serviceRevenue.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
-      topStaff: Array.from(staffRevenue.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
-      customerStats: { newCustomers, returningCustomers },
-    }
-  }
+  // (moved processAnalyticsData to module scope)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -397,7 +400,7 @@ export default function DashboardPage() {
       }
     }
     run()
-  }, [router, supabase, fetchTodaysAppointments, fetchTotalClients, fetchAnalyticsData])
+  }, [router, supabase, fetchTodaysAppointments, fetchTotalClients, fetchAnalyticsData, fetchLast7Days])
 
   if (isLoading) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Yükleniyor...</div>
