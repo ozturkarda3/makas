@@ -51,7 +51,7 @@ export default function CustomerCombobox({ onSelectClient, defaultClientId = nul
         setClients((data || []) as ClientItem[])
         // If default id provided, ensure it's set if present
         if (defaultClientId) {
-          const exists = (data || []).some((c: any) => c.id === defaultClientId)
+          const exists = (data || []).some((c: { id: string }) => c.id === defaultClientId)
           if (exists) setSelectedId(defaultClientId)
         }
       } catch (e) {
@@ -142,7 +142,7 @@ export default function CustomerCombobox({ onSelectClient, defaultClientId = nul
                   }}
                   className="w-full text-left px-3 py-2 bg-slate-800/60 hover:bg-slate-800 text-slate-200 rounded"
                 >
-                  Yeni müşteri oluştur: "{query.trim()}"
+                  Yeni müşteri oluştur: &quot;{query.trim()}&quot;
                 </button>
               )}
             </div>
@@ -177,7 +177,7 @@ export default function CustomerCombobox({ onSelectClient, defaultClientId = nul
                     }}
                     className="w-full text-left px-3 py-2 hover:bg-slate-800 focus:bg-slate-800 outline-none flex items-center gap-2 text-slate-200"
                   >
-                    <User className="h-4 w-4" /> Yeni müşteri oluştur: "{query.trim()}"
+                    <User className="h-4 w-4" /> Yeni müşteri oluştur: &quot;{query.trim()}&quot;
                   </button>
                 </li>
               )}

@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import CustomCalendarCaption from '@/components/ui/CustomCalendarCaption'
+// import CustomCalendarCaption from '@/components/ui/CustomCalendarCaption'
 
 interface Client {
   id: string
@@ -159,10 +159,10 @@ export default function CalendarPage() {
     )
   }
 
-  // Format time to HH:mm
-  const formatTime = (timeString: string) => {
-    return format(new Date(timeString), 'HH:mm')
-  }
+  // Format time to HH:mm (unused)
+  // const formatTime = (timeString: string) => {
+  //   return format(new Date(timeString), 'HH:mm')
+  // }
 
   const formatTimeRange = (start: string, durationMin?: number | null) => {
     const startDate = new Date(start)
@@ -272,7 +272,7 @@ export default function CalendarPage() {
                     nav: "hidden",
                     day_selected: "bg-slate-50 text-slate-950 hover:bg-slate-100", /* kept for fallback */
                     day_today: "border border-blue-400",
-                    day_cell: "p-2",
+                    cell: "p-2",
                     day: "text-slate-300 hover:bg-slate-800 hover:text-white",
                     head_cell: "text-slate-400",
                     nav_button: "text-slate-400 hover:bg-slate-800 hover:text-white",

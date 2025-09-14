@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import type { User } from '@supabase/supabase-js'
-import { CalendarDays, DollarSign, Users, Calendar, Edit, Scissors, BookUser, Image as ImageIcon, GalleryHorizontal } from 'lucide-react'
+import { CalendarDays, DollarSign, Users, Calendar, Scissors, BookUser, GalleryHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import WeeklyChart from '@/components/dashboard/WeeklyChart'
 import TodaysAgenda from '@/components/dashboard/TodaysAgenda'
 import AddAppointmentModal from '@/components/dashboard/AddAppointmentModal'
@@ -64,7 +64,7 @@ export default function DashboardPage() {
   type RawClient = { id: string; created_at: string }
   const [rawAppointments, setRawAppointments] = useState<RawAppointment[]>([])
   const [rawClients, setRawClients] = useState<RawClient[]>([])
-  const [timeRange, setTimeRange] = useState('7d')
+  // Removed unused timeRange local state
   const [businessOverviewTimeRange, setBusinessOverviewTimeRange] = useState<'7d' | '30d' | '6m'>('7d')
   const [weeklyData, setWeeklyData] = useState<{ date: string; total: number }[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -207,16 +207,25 @@ export default function DashboardPage() {
       }
 
       // Normalize and store raw data for reprocessing
-      const normalizedAppointments: RawAppointment[] = (allAppointments || []).map((row: any) => ({
+      const normalizedAppointments: RawAppointment[] = ((allAppointments || []) as Array<{
+        id: string
+        start_time: string
+        status?: string | null
+        client_id: string
+        service_id?: string | null
+        staff_member_id?: string | null
+        services?: { name?: string | null; price?: number | null } | null
+        staff_members?: { name?: string | null } | null
+      }>).map((row) => ({
         id: row.id,
         start_time: row.start_time,
         status: row.status,
         client_id: row.client_id,
         service_id: row.service_id,
         staff_member_id: row.staff_member_id,
-        service_name: row.services?.name,
+        service_name: row.services?.name ?? undefined,
         service_price: (row.services?.price as number | null) ?? 0,
-        staff_name: row.staff_members?.name,
+        staff_name: row.staff_members?.name ?? undefined,
       }))
       setRawAppointments(normalizedAppointments)
       setRawClients((allClients || []) as RawClient[])
@@ -307,7 +316,7 @@ export default function DashboardPage() {
   ) => {
     const today = new Date()
     let start = new Date(today)
-    let end = new Date(today)
+    const end = new Date(today)
     if (timeRange === '7d') {
       start.setDate(today.getDate() - 6)
       start.setHours(0, 0, 0, 0)
