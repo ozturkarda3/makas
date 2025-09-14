@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+// AlertDialog not available; we'll reuse Dialog for confirmation
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Edit, Trash2, MoreHorizontal } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -43,6 +46,8 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [search, setSearch] = useState('')
+  const filteredClients = clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
   const [isEditMode, setIsEditMode] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -198,8 +203,8 @@ export default function ClientsPage() {
   }
 
   // Helper function to truncate notes for table display
-  const truncateNotes = (notes: string | null, maxLength: number = 50) => {
-    if (!notes) return '-'
+  const truncateNotes = (notes: string | null, maxLength: number = 30) => {
+    if (!notes) return 'Not Yok'
     return notes.length > maxLength ? `${notes.substring(0, maxLength)}...` : notes
   }
 
@@ -324,6 +329,14 @@ export default function ClientsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Müşteri adıyla ara..."
+                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              />
+            </div>
             {clients.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-slate-400 text-6xl mb-4">👥</div>
@@ -341,21 +354,21 @@ export default function ClientsPage() {
                     <TableHead className="text-slate-300">Ad Soyad</TableHead>
                     <TableHead className="text-slate-300">Telefon Numarası</TableHead>
                     <TableHead className="text-slate-300">Özel Notlar</TableHead>
-                    <TableHead className="text-slate-300">İşlemler</TableHead>
+                    <TableHead className="text-slate-300 text-right w-0">İşlemler</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {clients.map((client) => (
+                  {filteredClients.map((client) => (
                     <TableRow key={client.id} className="border-slate-800 hover:bg-slate-800/50">
-                      <TableCell className="font-medium text-white">
+                      <TableCell className="font-medium text-white py-4">
                         <Link href={`/dashboard/clients/${client.id}`} className="hover:underline">
                           {client.name}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-slate-300">
+                      <TableCell className="text-slate-300 py-4">
                         {client.phone}
                       </TableCell>
-                      <TableCell className="text-slate-300 max-w-xs">
+                      <TableCell className="text-slate-300 max-w-xs py-4">
                         {(() => {
                           const latest = (client.client_notes || [])
                             .slice()
@@ -368,25 +381,42 @@ export default function ClientsPage() {
                           )
                         })()}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openEditDialog(client)}
-                            className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                          >
-                            Düzenle
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(client.id)}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                          >
-                            Sil
-                          </Button>
-                        </div>
+                      <TableCell className="text-right w-0 py-4">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-200">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800 text-slate-200">
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEditDialog(client) }} className="cursor-pointer">
+                              <Edit className="mr-2 h-4 w-4" /> Düzenle
+                            </DropdownMenuItem>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-400 focus:text-red-300 cursor-pointer">
+                                  <Trash2 className="mr-2 h-4 w-4" /> Sil
+                                </DropdownMenuItem>
+                              </DialogTrigger>
+                              <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Müşteriyi sil</DialogTitle>
+                                </DialogHeader>
+                                <div className="text-slate-400">
+                                  Bu müşteriyi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+                                </div>
+                                <div className="flex justify-end gap-3 pt-4">
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" className="text-slate-400 hover:text-slate-200">Vazgeç</Button>
+                                  </DialogTrigger>
+                                  <DialogTrigger asChild>
+                                    <Button onClick={() => handleDelete(client.id)} className="bg-red-600 hover:bg-red-700 text-white">Sil</Button>
+                                  </DialogTrigger>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}

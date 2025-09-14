@@ -14,6 +14,7 @@ interface Client {
 
 interface Service {
   name: string
+  price?: number | null
 }
 
 interface Appointment {
@@ -113,8 +114,13 @@ export default function TodaysAgenda({ appointments, onStatusChange }: TodaysAge
                         <div className="font-semibold text-slate-100 text-sm truncate">
                           {appointment.clients.name}
                         </div>
-                        <div className="text-slate-400 text-xs truncate">
-                          {appointment.services.name}
+                        <div className="text-slate-400 text-xs truncate flex items-center justify-between gap-3">
+                          <span className="truncate">{appointment.services.name}</span>
+                          {typeof appointment.services.price === 'number' ? (
+                            <span className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                              {appointment.services.price.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="text-slate-500 text-[11px] mt-0.5 truncate">
                           {(appointment.staff_members?.name || appointment.profiles?.full_name) ? (

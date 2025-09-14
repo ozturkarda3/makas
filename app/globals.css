@@ -67,3 +67,56 @@ html {
     color: hsl(var(--foreground));
   }
 }
+
+/* Calendar appointment indicators */
+.has-appointments::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: hsl(var(--primary));
+  z-index: 1;
+}
+
+.today-highlight {
+  font-weight: 800;
+  border: 1px solid hsl(var(--primary) / 0.5);
+  background-color: hsl(var(--primary) / 0.1);
+}
+
+/* Density indicators */
+.busy-day::after,
+.medium-day::after,
+.light-day::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+}
+
+.busy-day::after {
+  width: 10px;
+  height: 6px;
+  background-color: #ef4444; /* red-500 */
+  z-index: 1;
+}
+
+.medium-day::after {
+  width: 8px;
+  height: 5px;
+  background-color: #f59e0b; /* amber-500 */
+  z-index: 1;
+}
+
+.light-day::after {
+  width: 6px;
+  height: 4px;
+  background-color: #22c55e; /* green-500 */
+  z-index: 1;
+}

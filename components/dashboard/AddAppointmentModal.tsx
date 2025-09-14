@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +13,8 @@ import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { cn, normalizePhoneNumber } from '@/lib/utils'
+import CustomerCombobox from '@/components/dashboard/CustomerCombobox'
 
 interface Service {
   id: string
@@ -30,14 +31,17 @@ interface StaffMember {
 interface ProfileLite {
   id: string
   full_name: string | null
+  opening_time?: string | null
+  closing_time?: string | null
 }
 
 export default function AddAppointmentModal() {
   const supabase = createClient()
   
   // Form state
-  const [clientName, setClientName] = useState('')
-  const [clientPhone, setClientPhone] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [pendingNewClientName, setPendingNewClientName] = useState<string | null>(null)
+  const [pendingNewClientPhone, setPendingNewClientPhone] = useState<string>('')
   const [selectedServiceId, setSelectedServiceId] = useState('')
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTime, setSelectedTime] = useState('')
@@ -70,7 +74,7 @@ export default function AddAppointmentModal() {
             .order('name'),
           supabase
             .from('profiles')
-            .select('id, full_name')
+            .select('id, full_name, opening_time, closing_time')
             .eq('id', session.user.id)
             .single(),
         ])
@@ -104,9 +108,14 @@ export default function AddAppointmentModal() {
 
 
   const handleSaveAppointment = async () => {
-    // Validation
-    if (!clientName.trim() || !clientPhone.trim() || !selectedServiceId || !selectedDate || !selectedTime) {
-      toast.error('Lütfen tüm alanları doldurun')
+    // Validation with detailed feedback
+    const missing: string[] = []
+    if (!selectedServiceId) missing.push('Hizmet Seçimi')
+    if (!selectedDate) missing.push('Tarih')
+    if (!selectedTime || !selectedTime.trim()) missing.push('Saat')
+
+    if (missing.length > 0) {
+      toast.error(`Lütfen eksik alanları doldurun: ${missing.join(', ')}`)
       return
     }
 
@@ -120,7 +129,7 @@ export default function AddAppointmentModal() {
       }
 
       // Combine date and time
-      const appointmentDateTime = new Date(selectedDate)
+      const appointmentDateTime = new Date(selectedDate!)
       const [hours, minutes] = selectedTime.split(':')
       appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
 
@@ -159,9 +168,12 @@ export default function AddAppointmentModal() {
       const appointmentEndTime = new Date(appointmentDateTime)
       appointmentEndTime.setMinutes(appointmentEndTime.getMinutes() + selectedService.duration)
 
+      // Determine staff_member_id early for filtered overlap query: null if owner selected, else staff id
+      const resolvedStaffMemberId = selectedStaffId && selectedStaffId.startsWith('owner-') ? null : (selectedStaffId || null)
+
       // Check for overlapping appointments by fetching existing appointments for the same day
       const appointmentDate = format(appointmentDateTime, 'yyyy-MM-dd')
-      const { data: existingAppointments, error: overlapError } = await supabase
+      let overlapQuery = supabase
         .from('appointments')
         .select(`
           id, 
@@ -171,6 +183,15 @@ export default function AddAppointmentModal() {
         .eq('profile_id', session.user.id)
         .gte('start_time', `${appointmentDate}T00:00:00`)
         .lt('start_time', `${appointmentDate}T23:59:59`)
+
+      // Staff-specific overlap filter (owner => staff_member_id IS NULL, else equals staff id)
+      if (resolvedStaffMemberId === null) {
+        overlapQuery = overlapQuery.is('staff_member_id', null)
+      } else {
+        overlapQuery = overlapQuery.eq('staff_member_id', resolvedStaffMemberId)
+      }
+
+      const { data: existingAppointments, error: overlapError } = await overlapQuery
 
       if (overlapError) {
         console.error('Error checking overlaps:', overlapError)
@@ -197,49 +218,35 @@ export default function AddAppointmentModal() {
         return
       }
 
-      // First, create or get the client
+      // Resolve client id: use selected combobox client; else create a walk-in
       let clientId: string
-      
-      // Check if client already exists
-      const { data: existingClient, error: clientCheckError } = await supabase
-        .from('clients')
-        .select('id')
-        .eq('profile_id', session.user.id)
-        .eq('phone', clientPhone)
-        .single()
-
-      if (clientCheckError && clientCheckError.code !== 'PGRST116') {
-        console.error('Error checking client:', clientCheckError)
-        toast.error('Müşteri kontrolü sırasında hata oluştu')
-        return
-      }
-
-      if (existingClient) {
-        // Use existing client
-        clientId = existingClient.id
+      if (selectedClientId) {
+        clientId = selectedClientId
       } else {
-        // Create new client
+        const nameToUse = pendingNewClientName?.trim() || 'Walk-in Müşteri'
+        const phoneToUseRaw = pendingNewClientPhone.trim()
+        const phoneToUse = normalizePhoneNumber(phoneToUseRaw)
+        if (!phoneToUse) {
+          toast.error('Geçerli bir telefon numarası giriniz')
+          return
+        }
         const { data: newClient, error: createClientError } = await supabase
           .from('clients')
           .insert({
-            name: clientName,
-            phone: clientPhone,
+            name: nameToUse,
+            phone: phoneToUse,
             profile_id: session.user.id
           })
           .select('id')
           .single()
 
-        if (createClientError) {
-          console.error('Error creating client:', createClientError)
+        if (createClientError || !newClient) {
+          console.error('Error creating walk-in client:', createClientError)
           toast.error('Müşteri oluşturulurken hata oluştu')
           return
         }
-
         clientId = newClient.id
       }
-
-      // Determine staff_member_id: null if owner selected, else staff id
-      const resolvedStaffMemberId = selectedStaffId && selectedStaffId.startsWith('owner-') ? null : (selectedStaffId || null)
 
       // Create appointment with current table structure
       const { error: appointmentError } = await supabase
@@ -268,8 +275,9 @@ export default function AddAppointmentModal() {
       toast.success('Randevu başarıyla oluşturuldu!')
       
       // Reset form and close modal
-      setClientName('')
-      setClientPhone('')
+      setSelectedClientId(null)
+      setPendingNewClientName(null)
+      setPendingNewClientPhone('')
       setSelectedDate(undefined)
       setSelectedTime('')
       setIsOpen(false)
@@ -282,9 +290,49 @@ export default function AddAppointmentModal() {
     }
   }
 
+  // Time slots based on working hours, 15-minute intervals
+  const timeSlots: string[] = useMemo(() => {
+    const slots: string[] = []
+    const defaultOpen = 10
+    const defaultClose = 20
+    const startHour = profile?.opening_time ? parseInt(profile.opening_time.split(':')[0]) : defaultOpen
+    const endHour = profile?.closing_time ? parseInt(profile.closing_time.split(':')[0]) : defaultClose
+    for (let h = startHour; h < endHour; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        const hh = String(h).padStart(2, '0')
+        const mm = String(m).padStart(2, '0')
+        slots.push(`${hh}:${mm}`)
+      }
+    }
+    return slots
+  }, [profile])
+
+  // Hide past times if selected date is today
+  const visibleTimeSlots: string[] = useMemo(() => {
+    if (!selectedDate) return timeSlots
+    const today = new Date()
+    const isToday = format(selectedDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
+    if (!isToday) return timeSlots
+    const currentMinutes = today.getHours() * 60 + today.getMinutes()
+    return timeSlots.filter(t => {
+      const [h, m] = t.split(':').map(Number)
+      const minutes = h * 60 + m
+      return minutes > currentMinutes
+    })
+  }, [timeSlots, selectedDate])
+
+  // Clear selected time if it becomes invalid after date change
+  useEffect(() => {
+    if (selectedTime && !visibleTimeSlots.includes(selectedTime)) {
+      setSelectedTime('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, visibleTimeSlots])
+
   const resetForm = () => {
-    setClientName('')
-    setClientPhone('')
+    setSelectedClientId(null)
+    setPendingNewClientName(null)
+    setPendingNewClientPhone('')
     setSelectedServiceId('')
     setSelectedDate(undefined)
     setSelectedTime('')
@@ -304,29 +352,31 @@ export default function AddAppointmentModal() {
         </DialogHeader>
         
         <div className="space-y-4 py-4">
-          {/* Client Name */}
+          {/* Customer Selection */}
           <div className="space-y-2">
-            <Label htmlFor="clientName" className="text-blue-900">Müşteri Adı</Label>
-            <Input
-              id="clientName"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="Müşteri adını girin"
-              className="border-blue-900 text-blue-900 placeholder:text-gray-400 focus:border-blue-700 focus:ring-blue-700"
+            <Label className="text-blue-900">Müşteri</Label>
+            <CustomerCombobox
+              onSelectClient={(id) => { setSelectedClientId(id); setPendingNewClientName(null) }}
+              allowCreate
+              onCreateClient={(name) => { setSelectedClientId(null); setPendingNewClientName(name) }}
+              selectedLabel={pendingNewClientName}
+              tone="blue"
             />
           </div>
-          
-          {/* Client Phone */}
-          <div className="space-y-2">
-            <Label htmlFor="clientPhone" className="text-blue-900">Müşteri Telefonu</Label>
-            <Input
-              id="clientPhone"
-              value={clientPhone}
-              onChange={(e) => setClientPhone(e.target.value)}
-              placeholder="5XX XXX XX XX"
-              className="border-blue-900 text-blue-900 placeholder:text-gray-400 focus:border-blue-700 focus:ring-blue-700"
-            />
-          </div>
+
+          {/* If creating a new customer, show phone input */}
+          {pendingNewClientName && (
+            <div className="space-y-2">
+              <Label htmlFor="newClientPhone" className="text-blue-900">Telefon Numarası</Label>
+              <Input
+                id="newClientPhone"
+                value={pendingNewClientPhone}
+                onChange={(e) => setPendingNewClientPhone(e.target.value)}
+                placeholder="5XX XXX XX XX"
+                className="border-blue-900 text-blue-900 placeholder:text-gray-400 focus:border-blue-700 focus:ring-blue-700"
+              />
+            </div>
+          )}
           
           {/* Service Selection */}
           <div className="space-y-2">
@@ -417,13 +467,22 @@ export default function AddAppointmentModal() {
           {/* Time Selection */}
           <div className="space-y-2">
             <Label htmlFor="time" className="text-blue-900">Saat</Label>
-            <Input
-              id="time"
-              type="time"
-              value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
-              className="border-blue-900 text-blue-900 focus:border-blue-700 focus:ring-blue-700"
-            />
+            <Select value={selectedTime} onValueChange={setSelectedTime}>
+              <SelectTrigger className="border-blue-900 text-blue-900 focus:border-blue-700 focus:ring-blue-700">
+                <SelectValue placeholder="Saat seçin" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-blue-900">
+                {visibleTimeSlots.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-blue-900">Uygun saat yok</div>
+                ) : (
+                  visibleTimeSlots.map((t) => (
+                    <SelectItem key={t} value={t} className="text-blue-900 hover:bg-blue-50 focus:bg-blue-100">
+                      {t}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         

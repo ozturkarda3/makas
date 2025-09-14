@@ -11,15 +11,16 @@ import { tr } from 'date-fns/locale'
 import AddAppointmentModal from '@/components/dashboard/AddAppointmentModal'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import CustomCalendarCaption from '@/components/ui/CustomCalendarCaption'
 
 interface Client {
   id: string
   name: string
 }
 
-interface Service { name: string }
+interface Service { name: string; duration?: number | null }
 interface StaffLite { name?: string | null }
 interface ProfileLite { full_name?: string | null }
 
@@ -40,13 +41,17 @@ export default function CalendarPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [isLoading, setIsLoading] = useState(true)
+  const [appointmentDates, setAppointmentDates] = useState<Date[]>([])
+  const [busyDates, setBusyDates] = useState<Date[]>([])
+  const [mediumDates, setMediumDates] = useState<Date[]>([])
+  const [lightDates, setLightDates] = useState<Date[]>([])
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date())
 
   const loadAppointments = useCallback(async (userId: string) => {
     const { data, error } = await supabase
       .from('appointments')
-      .select('*, clients(name), services(name), staff_members!appointments_staff_member_id_fkey(name), profiles(full_name)')
+      .select('*, clients(name), services(name, duration), staff_members!appointments_staff_member_id_fkey(name), profiles(full_name)')
       .eq('profile_id', userId)
-      .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true })
 
     if (error) {
@@ -59,7 +64,7 @@ export default function CalendarPage() {
       start_time: string
       client_id: string
       clients?: { name?: string | null } | null
-      services?: { name?: string | null } | null
+      services?: { name?: string | null; duration?: number | null } | null
       staff_members?: StaffLite | null
       profiles?: ProfileLite | null
       status?: Appointment['status']
@@ -67,13 +72,37 @@ export default function CalendarPage() {
       id: row.id,
       start_time: row.start_time,
       clients: { id: row.client_id, name: row.clients?.name || 'Bilinmeyen Müşteri' },
-      services: { name: row.services?.name || 'Bilinmeyen Hizmet' },
+      services: { name: row.services?.name || 'Bilinmeyen Hizmet', duration: row.services?.duration ?? null },
       staff_members: row.staff_members || null,
       profiles: row.profiles || null,
       status: row.status || 'booked',
     }))
 
     setAppointments(normalized)
+    // Derive unique appointment day dates and density buckets for calendar modifiers
+    const unique = new Map<string, Date>()
+    const counts = new Map<string, number>()
+    for (const ap of normalized) {
+      const d = new Date(ap.start_time)
+      d.setHours(0, 0, 0, 0)
+      const key = d.toISOString().split('T')[0]
+      unique.set(key, new Date(d))
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    const uniques = Array.from(unique.values())
+    setAppointmentDates(uniques)
+    const busy: Date[] = []
+    const medium: Date[] = []
+    const light: Date[] = []
+    for (const [key, count] of counts.entries()) {
+      const day = unique.get(key)!
+      if (count >= 4) busy.push(day)
+      else if (count >= 2) medium.push(day)
+      else if (count === 1) light.push(day)
+    }
+    setBusyDates(busy)
+    setMediumDates(medium)
+    setLightDates(light)
   }, [supabase])
 
   useEffect(() => {
@@ -135,6 +164,14 @@ export default function CalendarPage() {
     return format(new Date(timeString), 'HH:mm')
   }
 
+  const formatTimeRange = (start: string, durationMin?: number | null) => {
+    const startDate = new Date(start)
+    const end = new Date(startDate)
+    const dur = durationMin && durationMin > 0 ? durationMin : 30
+    end.setMinutes(end.getMinutes() + dur)
+    return `${format(startDate, 'HH:mm')} - ${format(end, 'HH:mm')}`
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -177,23 +214,78 @@ export default function CalendarPage() {
               <CardTitle className="text-white">Takvim</CardTitle>
             </CardHeader>
             <CardContent>
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={setSelectedDate}
-                className="rounded-md border-slate-700"
-                classNames={{
-                  day_selected: "bg-slate-50 text-slate-950 hover:bg-slate-100",
-                  day_today: "bg-slate-800 text-slate-50",
-                  day: "text-slate-300 hover:bg-slate-800 hover:text-white",
-                  head_cell: "text-slate-400",
-                  nav_button: "text-slate-400 hover:bg-slate-800 hover:text-white",
-                  nav_button_previous: "text-slate-400 hover:bg-slate-800 hover:text-white",
-                  nav_button_next: "text-slate-400 hover:bg-slate-800 hover:text-white",
-                  caption: "text-slate-300",
-                  caption_label: "text-slate-300 font-medium"
-                }}
-              />
+              {/* Custom Calendar Header */}
+              <div className="flex items-center justify-between mb-3 -mt-4">
+                <Button variant="ghost" size="icon" onClick={() => {
+                  const prev = new Date(currentMonth)
+                  prev.setMonth(prev.getMonth() - 1)
+                  prev.setDate(1)
+                  setCurrentMonth(prev)
+                }} aria-label="Önceki ay" className="h-8 w-8">
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <div className="text-sm font-medium text-slate-200 select-none">
+                  {currentMonth.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={() => {
+                    const next = new Date(currentMonth)
+                    next.setMonth(next.getMonth() + 1)
+                    next.setDate(1)
+                    setCurrentMonth(next)
+                  }} aria-label="Sonraki ay" className="h-8 w-8">
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Date Range Shortcuts removed */}
+
+              <div className="w-full flex justify-center">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  locale={tr}
+                  month={currentMonth}
+                  onMonthChange={setCurrentMonth}
+                  showOutsideDays={false}
+                  className="rounded-md border-slate-700 w-full [--cell-size:--spacing(14)]"
+                  modifiers={{ hasAppointments: appointmentDates, busy: busyDates, medium: mediumDates, light: lightDates }}
+                  modifiersClassNames={{
+                    hasAppointments: 'has-appointments',
+                    busy: 'busy-day',
+                    medium: 'medium-day',
+                    light: 'light-day',
+                    today: 'today-highlight',
+                    selected: 'bg-primary text-primary-foreground'
+                  }}
+                  formatters={{
+                    formatWeekdayName: (date) => date.toLocaleDateString('tr-TR', { weekday: 'short' }).charAt(0)
+                  }}
+                  classNames={{
+                    root: "w-fit",
+                    months: "w-full flex justify-center",
+                    month: "w-fit",
+                    table: "w-fit",
+                    month_caption: "flex items-center justify-between w-full max-w-[520px] mx-auto px-2 -mt-3",
+                    nav: "hidden",
+                    day_selected: "bg-slate-50 text-slate-950 hover:bg-slate-100", /* kept for fallback */
+                    day_today: "border border-blue-400",
+                    day_cell: "p-2",
+                    day: "text-slate-300 hover:bg-slate-800 hover:text-white",
+                    head_cell: "text-slate-400",
+                    nav_button: "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    nav_button_previous: "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    nav_button_next: "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    caption: "text-slate-300",
+                    caption_label: "text-slate-300 font-medium"
+                  }}
+                />
+              </div>
+              <div className="mt-4 flex justify-center">
+                <Button variant="outline" onClick={() => setSelectedDate(new Date())}>Bugün</Button>
+              </div>
               <div className="mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
                 <p className="text-slate-400 text-xs text-center">
                   💡 Bugün için sadece gelecek saatlerde randevu oluşturabilirsiniz
@@ -227,7 +319,7 @@ export default function CalendarPage() {
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-slate-300 font-medium">
-                              {formatTime(appointment.start_time)}
+                              {formatTimeRange(appointment.start_time, appointment.services?.duration ?? undefined)}
                             </span>
                             <div className="flex items-center gap-2">
                               <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
@@ -265,11 +357,9 @@ export default function CalendarPage() {
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-8">
-                    <div className="text-slate-400 text-4xl mb-3">📅</div>
-                    <p className="text-slate-400 text-sm">
-                      Bu tarih için planlanmış randevu bulunmuyor.
-                    </p>
+                  <div className="py-8 flex flex-col items-center gap-3">
+                    <p className="text-slate-300 text-sm">Bu gün için randevu yok</p>
+                    <AddAppointmentModal />
                   </div>
                 )
               ) : (
@@ -280,13 +370,7 @@ export default function CalendarPage() {
                   </p>
                 </div>
               )}
-              
-              {/* Note about filtering */}
-              <div className="mt-6 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-                <p className="text-slate-400 text-xs text-center">
-                  Tarihe göre filtreleme yakında eklenecektir.
-                </p>
-              </div>
+
             </CardContent>
           </Card>
         </div>

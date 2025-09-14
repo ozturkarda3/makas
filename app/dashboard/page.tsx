@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabaseClient'
 import type { User } from '@supabase/supabase-js'
-import { CalendarDays, DollarSign, Users, Calendar, Edit, Scissors, BookUser, Image as ImageIcon } from 'lucide-react'
+import { CalendarDays, DollarSign, Users, Calendar, Edit, Scissors, BookUser, Image as ImageIcon, GalleryHorizontal } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
+import WeeklyChart from '@/components/dashboard/WeeklyChart'
 import TodaysAgenda from '@/components/dashboard/TodaysAgenda'
 import AddAppointmentModal from '@/components/dashboard/AddAppointmentModal'
-import AnalyticsWidget from '@/components/dashboard/AnalyticsWidget'
+import BusinessOverviewWidget from '@/components/dashboard/BusinessOverviewWidget'
 import OpportunityBanner from '../../components/dashboard/OpportunityBanner'
 import useOpportunities from '@/lib/hooks/useOpportunities'
 
@@ -25,10 +27,7 @@ interface Appointment {
 
 // WeeklyData removed as weekly chart is no longer rendered
 
-interface AnalyticsData {
-  date: string
-  total: number
-}
+// Removed old AnalyticsData structure
 
 interface DashboardStats {
   todaysAppointments: number
@@ -47,14 +46,27 @@ export default function DashboardPage() {
   })
   const [todaysAppointments, setTodaysAppointments] = useState<Appointment[]>([])
   // Removed unused weeklyData state
-  const [appointmentData, setAppointmentData] = useState<AnalyticsData[]>([])
-  const [revenueData, setRevenueData] = useState<AnalyticsData[]>([])
-  const [newClientData, setNewClientData] = useState<AnalyticsData[]>([])
-  type RawAppointment = { start_time: string; services?: Array<{ price: number }> }
-  type RawClient = { created_at: string }
+  // Stats for BusinessOverviewWidget
+  const [overviewTopServices, setOverviewTopServices] = useState<{ name: string; revenue: number }[]>([])
+  const [overviewTopStaff, setOverviewTopStaff] = useState<{ name: string; revenue: number }[]>([])
+  const [overviewCustomers, setOverviewCustomers] = useState<{ newCustomers: number; returningCustomers: number }>({ newCustomers: 0, returningCustomers: 0 })
+  type RawAppointment = {
+    id: string
+    start_time: string
+    status?: string | null
+    client_id: string
+    service_id?: string | null
+    staff_member_id?: string | null
+    service_name?: string
+    service_price?: number
+    staff_name?: string
+  }
+  type RawClient = { id: string; created_at: string }
   const [rawAppointments, setRawAppointments] = useState<RawAppointment[]>([])
   const [rawClients, setRawClients] = useState<RawClient[]>([])
   const [timeRange, setTimeRange] = useState('7d')
+  const [businessOverviewTimeRange, setBusinessOverviewTimeRange] = useState<'7d' | '30d' | '6m'>('7d')
+  const [weeklyData, setWeeklyData] = useState<{ date: string; total: number }[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const { opportunities } = useOpportunities()
 
@@ -62,21 +74,21 @@ export default function DashboardPage() {
 
   // Initial load after defining data-fetching callbacks
 
-  // Reprocess analytics data when timeRange changes
+  // Reprocess Business Overview analytics when its timeRange changes
   useEffect(() => {
     if (rawAppointments.length > 0 || rawClients.length > 0) {
       // Reprocess raw data with new timeRange
       const processedData = processAnalyticsData(
         rawAppointments,
         rawClients,
-        timeRange
+        businessOverviewTimeRange
       )
       
-      setAppointmentData(processedData.appointmentData)
-      setRevenueData(processedData.revenueData)
-      setNewClientData(processedData.newClientData)
+      setOverviewTopServices(processedData.topServices)
+      setOverviewTopStaff(processedData.topStaff)
+      setOverviewCustomers(processedData.customerStats)
     }
-  }, [timeRange, rawAppointments, rawClients])
+  }, [businessOverviewTimeRange, rawAppointments, rawClients])
 
   const fetchTodaysAppointments = useCallback(async (userId: string) => {
     try {
@@ -155,32 +167,34 @@ export default function DashboardPage() {
 
   const fetchAnalyticsData = useCallback(async (userId: string) => {
     try {
-      // Always fetch data covering the last 6 months INCLUDING the current month
-      // Start from the first day of the month 5 months ago, through today
+      // Always fetch a broad window (last 6 months) and slice by UI filter in-process
       const today = new Date()
-      const startFrom = new Date(today)
-      startFrom.setMonth(today.getMonth() - 5)
-      startFrom.setDate(1)
-      startFrom.setHours(0, 0, 0, 0)
-      
-      const startDate = startFrom.toISOString()
-      const endDate = today.toISOString()
+      const periodStart = new Date(today.getFullYear(), today.getMonth() - 5, 1, 0, 0, 0, 0)
+      const periodEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999)
+      const startDate = periodStart.toISOString()
+      const endDate = periodEnd.toISOString()
 
-      // Fetch appointments with service information for revenue calculation
+      // Fetch appointments with service/staff/client info for revenue calculation
       const { data: allAppointments, error: appointmentsError } = await supabase
         .from('appointments')
         .select(`
+          id,
           start_time,
-          services:services(price)
+          status,
+          client_id,
+          service_id,
+          staff_member_id,
+          services(name, price),
+          staff_members!appointments_staff_member_id_fkey(name)
         `)
         .eq('profile_id', userId)
         .gte('start_time', startDate)
         .lte('start_time', endDate)
 
-      // Fetch clients created in the last 6 months
+      // Fetch clients created in the selected period
       const { data: allClients, error: clientsError } = await supabase
         .from('clients')
-        .select('created_at')
+        .select('id, created_at')
         .eq('profile_id', userId)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
@@ -192,25 +206,90 @@ export default function DashboardPage() {
         console.error('Error fetching clients:', clientsError)
       }
 
-      // Store raw data for reprocessing
-      setRawAppointments(allAppointments || [])
-      setRawClients(allClients || [])
+      // Normalize and store raw data for reprocessing
+      const normalizedAppointments: RawAppointment[] = (allAppointments || []).map((row: any) => ({
+        id: row.id,
+        start_time: row.start_time,
+        status: row.status,
+        client_id: row.client_id,
+        service_id: row.service_id,
+        staff_member_id: row.staff_member_id,
+        service_name: row.services?.name,
+        service_price: (row.services?.price as number | null) ?? 0,
+        staff_name: row.staff_members?.name,
+      }))
+      setRawAppointments(normalizedAppointments)
+      setRawClients((allClients || []) as RawClient[])
       
-      // Process the data for analytics based on current timeRange
+      // Process the data for analytics based on current business overview range
       const processedData = processAnalyticsData(
-        allAppointments || [],
-        allClients || [],
-        timeRange
+        normalizedAppointments,
+        (allClients || []) as RawClient[],
+        businessOverviewTimeRange
       )
       
-      setAppointmentData(processedData.appointmentData)
-      setRevenueData(processedData.revenueData)
-      setNewClientData(processedData.newClientData)
+      setOverviewTopServices(processedData.topServices)
+      setOverviewTopStaff(processedData.topStaff)
+      setOverviewCustomers(processedData.customerStats)
 
     } catch (error) {
       console.error('Error fetching analytics data:', error)
     }
-  }, [supabase, timeRange])
+  }, [supabase])
+
+  // Fetch last 7 days for WeeklyChart
+  const fetchLast7Days = useCallback(async (userId: string) => {
+    try {
+      const today = new Date()
+      const start = new Date(today)
+      start.setDate(today.getDate() - 6)
+      start.setHours(0, 0, 0, 0)
+
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('start_time')
+        .eq('profile_id', userId)
+        .gte('start_time', start.toISOString())
+        .lte('start_time', today.toISOString())
+
+      if (error) {
+        console.error('Error fetching last 7 days appointments:', error)
+        return
+      }
+
+      const points = computeWeeklyData((data || []) as Array<{ start_time: string }>)
+      setWeeklyData(points)
+    } catch (e) {
+      console.error('Unexpected error fetching last 7 days appointments:', e)
+    }
+  }, [supabase])
+
+  const computeWeeklyData = (appointments: Array<{ start_time: string }>): { date: string; total: number }[] => {
+    const today = new Date()
+    const days: Date[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today)
+      d.setDate(today.getDate() - i)
+      d.setHours(0, 0, 0, 0)
+      days.push(d)
+    }
+
+    const counts = new Map<string, number>()
+    days.forEach(d => counts.set(d.toISOString().split('T')[0], 0))
+
+    appointments.forEach(a => {
+      const d = new Date(a.start_time)
+      d.setHours(0, 0, 0, 0)
+      const key = d.toISOString().split('T')[0]
+      if (counts.has(key)) counts.set(key, (counts.get(key) || 0) + 1)
+    })
+
+    return days.map(d => {
+      const key = d.toISOString().split('T')[0]
+      const label = d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+      return { date: label, total: counts.get(key) || 0 }
+    })
+  }
 
   // Identify highest-priority opportunity (currently: lapsing client)
   const topOpportunity = useMemo(() => {
@@ -222,170 +301,61 @@ export default function DashboardPage() {
 
   // Helper function to process analytics data with advanced aggregation
   const processAnalyticsData = (
-    appointments: Array<{ start_time: string; services?: Array<{ price: number }> }>,
-    clients: Array<{ created_at: string }>,
-    timeRange: string
+    appointments: RawAppointment[],
+    clients: RawClient[],
+    timeRange: '7d' | '30d' | '6m'
   ) => {
     const today = new Date()
-    const appointmentData: AnalyticsData[] = []
-    const revenueData: AnalyticsData[] = []
-    const newClientData: AnalyticsData[] = []
-    
+    let start = new Date(today)
+    let end = new Date(today)
     if (timeRange === '7d') {
-      // Group by individual days for last 7 days
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date(today)
-        date.setDate(today.getDate() - i)
-        
-        const dayStart = new Date(date)
-        dayStart.setHours(0, 0, 0, 0)
-        const dayEnd = new Date(date)
-        dayEnd.setHours(23, 59, 59, 999)
-        
-        const dayAppointments = appointments.filter(apt => {
-          const aptDate = new Date(apt.start_time)
-          return aptDate >= dayStart && aptDate <= dayEnd
-        })
-        
-        const dayRevenue = dayAppointments.reduce((total, apt) => {
-          const servicePrice = apt.services?.[0]?.price || 0
-          return total + servicePrice
-        }, 0)
-        
-        const dayNewClients = clients.filter(client => {
-          const clientDate = new Date(client.created_at)
-          return clientDate >= dayStart && clientDate <= dayEnd
-        })
-        
-        const dateString = date.toISOString().split('T')[0]
-        
-        appointmentData.push({
-          date: dateString,
-          total: dayAppointments.length
-        })
-        
-        revenueData.push({
-          date: dateString,
-          total: dayRevenue
-        })
-        
-        newClientData.push({
-          date: dateString,
-          total: dayNewClients.length
-        })
-      }
+      start.setDate(today.getDate() - 6)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
     } else if (timeRange === '30d') {
-      // Group by last 4 FULL weeks ending on Sundays, label each by the Sunday date (e.g., "August 11")
-      const ref = new Date(today)
-      ref.setHours(0, 0, 0, 0)
-      const day = ref.getDay() // 0 Sun - 6 Sat
-      // Closest former Sunday (exclude today if Sunday)
-      const lastSunday = new Date(ref)
-      if (day === 0) {
-        lastSunday.setDate(ref.getDate() - 7)
-      } else {
-        lastSunday.setDate(ref.getDate() - day)
-      }
-
-      // Build 4 weeks: oldest to most recent completed week
-      for (let i = 3; i >= 0; i--) {
-        const weekEnd = new Date(lastSunday)
-        weekEnd.setDate(lastSunday.getDate() - (i * 7))
-        weekEnd.setHours(23, 59, 59, 999)
-
-        const weekStart = new Date(weekEnd)
-        weekStart.setDate(weekEnd.getDate() - 6)
-        weekStart.setHours(0, 0, 0, 0)
-
-        const weekAppointments = appointments.filter(apt => {
-          const aptDate = new Date(apt.start_time)
-          return aptDate >= weekStart && aptDate <= weekEnd
-        })
-
-        const weekRevenue = weekAppointments.reduce((total, apt) => {
-          const servicePrice = apt.services?.[0]?.price || 0
-          return total + servicePrice
-        }, 0)
-
-        const weekNewClients = clients.filter(client => {
-          const clientDate = new Date(client.created_at)
-          return clientDate >= weekStart && clientDate <= weekEnd
-        })
-
-        // Label as Monday–Sunday range in Turkish (day before month) with "Haftası"
-        const sameMonth = weekStart.getMonth() === weekEnd.getMonth() && weekStart.getFullYear() === weekEnd.getFullYear()
-        const startMonthName = weekStart.toLocaleDateString('tr-TR', { month: 'long' })
-        const endMonthName = weekEnd.toLocaleDateString('tr-TR', { month: 'long' })
-        const startDay = weekStart.getDate()
-        const endDay = weekEnd.getDate()
-        const label = sameMonth
-          ? `${startDay} ${startMonthName} - ${endDay} ${endMonthName} Haftası`
-          : `${startDay} ${startMonthName} - ${endDay} ${endMonthName} Haftası`
-
-        appointmentData.push({
-          date: label,
-          total: weekAppointments.length
-        })
-
-        revenueData.push({
-          date: label,
-          total: weekRevenue
-        })
-
-        newClientData.push({
-          date: label,
-          total: weekNewClients.length
-        })
-      }
-    } else if (timeRange === '6m') {
-      // Group by months for last 6 months (including current month), oldest -> newest
-      // Use a stable base anchored to the first day of the current month to avoid edge cases
-      const base = new Date(today.getFullYear(), today.getMonth(), 1)
-      for (let i = 5; i >= 0; i--) {
-        const monthStart = new Date(base.getFullYear(), base.getMonth() - i, 1)
-        monthStart.setHours(0, 0, 0, 0)
-        
-        const monthEndDate = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0, 23, 59, 59, 999)
-        
-        const monthAppointments = appointments.filter(apt => {
-          const aptDate = new Date(apt.start_time)
-          return aptDate >= monthStart && aptDate <= monthEndDate
-        })
-        
-        const monthRevenue = monthAppointments.reduce((total, apt) => {
-          const servicePrice = apt.services?.[0]?.price || 0
-          return total + servicePrice
-        }, 0)
-        
-        const monthNewClients = clients.filter(client => {
-          const clientDate = new Date(client.created_at)
-          return clientDate >= monthStart && clientDate <= monthEndDate
-        })
-        
-        // Use the month start date as the date key, but store the month name separately
-        const monthStartDate = monthStart.toISOString().split('T')[0]
-        
-        appointmentData.push({
-          date: monthStartDate,
-          total: monthAppointments.length
-        })
-        
-        revenueData.push({
-          date: monthStartDate,
-          total: monthRevenue
-        })
-        
-        newClientData.push({
-          date: monthStartDate,
-          total: monthNewClients.length
-        })
-      }
+      start.setDate(today.getDate() - 29)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+    } else {
+      start = new Date(today.getFullYear(), today.getMonth() - 5, 1, 0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
     }
-    
+
+    const inRange = appointments.filter(a => {
+      const d = new Date(a.start_time)
+      return d >= start && d <= end
+    })
+
+    const completed = inRange.filter(a => (a.status ?? 'booked') === 'completed')
+
+    const serviceRevenue = new Map<string, { name: string; revenue: number }>()
+    const staffRevenue = new Map<string, { name: string; revenue: number }>()
+
+    completed.forEach(a => {
+      const price = a.service_price || 0
+      const sKey = a.service_id || 'unknown'
+      const sName = a.service_name || 'Bilinmeyen Hizmet'
+      serviceRevenue.set(sKey, { name: sName, revenue: (serviceRevenue.get(sKey)?.revenue || 0) + price })
+
+      const stKey = a.staff_member_id || 'owner'
+      const stName = a.staff_name || 'İşletme Sahibi'
+      staffRevenue.set(stKey, { name: stName, revenue: (staffRevenue.get(stKey)?.revenue || 0) + price })
+    })
+
+    const clientsCreated = new Map<string, Date>(clients.map(c => [c.id, new Date(c.created_at)]))
+    let newCustomers = 0
+    let returningCustomers = 0
+    const distinctClientIds = new Set(inRange.map(a => a.client_id))
+    distinctClientIds.forEach(id => {
+      const created = clientsCreated.get(id)
+      if (created && created >= start && created <= end) newCustomers += 1
+      else returningCustomers += 1
+    })
+
     return {
-      appointmentData,
-      revenueData,
-      newClientData
+      topServices: Array.from(serviceRevenue.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
+      topStaff: Array.from(staffRevenue.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
+      customerStats: { newCustomers, returningCustomers },
     }
   }
 
@@ -408,6 +378,7 @@ export default function DashboardPage() {
           fetchTodaysAppointments(session.user.id),
           fetchTotalClients(session.user.id),
           fetchAnalyticsData(session.user.id),
+          fetchLast7Days(session.user.id),
         ])
       } catch (error) {
         console.error('Error:', error)
@@ -434,7 +405,32 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold tracking-tight">
             Kontrol Paneli
           </h1>
-          <button onClick={handleLogout} className="text-slate-400 hover:text-white">Çıkış Yap</button>
+          <div className="flex items-center gap-3">
+            <AddAppointmentModal />
+            <div className="flex items-center gap-1">
+              <Link href="/dashboard/portfolio">
+                <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white" title="Portfolyo" aria-label="Portfolyo">
+                  <GalleryHorizontal className="h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href="/dashboard/clients">
+                <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white" title="Müşteriler" aria-label="Müşteriler">
+                  <Users className="h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href="/dashboard/services">
+                <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white" title="Hizmetler" aria-label="Hizmetler">
+                  <Scissors className="h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href="/dashboard/team">
+                <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white" title="Personel" aria-label="Personel">
+                  <BookUser className="h-5 w-5" />
+                </Button>
+              </Link>
+            </div>
+            <button onClick={handleLogout} className="text-slate-400 hover:text-white">Çıkış Yap</button>
+          </div>
         </div>
 
         {topOpportunity && (
@@ -448,12 +444,70 @@ export default function DashboardPage() {
         </p>
 
                 {/* Main Content Grid - Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          {/* Main Panel (Left Side) - Today's Agenda Focus */}
-          <div className="lg:col-span-2">
-            <div className="space-y-6">
-              <Card className="bg-slate-900 border-slate-800">
+          {/* Left Column - Quick Look (Small) + Weekly Activity (Large) */}
+          <div className="flex flex-col">
+            <div className="space-y-6 flex-1 flex flex-col">
+              {/* Hızlı Bakış - small height */}
+              <div className="min-h-[220px]">
+                <Card className="bg-slate-900 border-slate-800 h-full">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-semibold text-white">Hızlı Bakış</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                      <CardHeader className="p-0">
+                        <div className="flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4 text-slate-400" />
+                          <CardTitle className="text-slate-300 text-sm font-medium">Bugünkü Randevu Sayısı</CardTitle>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-0 pt-2">
+                        <div className="text-3xl font-bold text-white">{stats.todaysAppointments}</div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                      <CardHeader className="p-0">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4 text-slate-400" />
+                          <CardTitle className="text-slate-300 text-sm font-medium">Bugünkü Beklenen Kazanç</CardTitle>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-0 pt-2">
+                        <div className="text-3xl font-bold text-white">{`${stats.todaysExpectedRevenue.toFixed(0)} TL`}</div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                      <CardHeader className="p-0">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-slate-400" />
+                          <CardTitle className="text-slate-300 text-sm font-medium">Toplam Müşteri Sayısı</CardTitle>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-0 pt-2">
+                        <div className="text-3xl font-bold text-white">{stats.totalClients}</div>
+                      </CardContent>
+                    </Card>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              {/* Haftalık Aktivite - large (fill remaining) */}
+              <div className="flex-grow [&>div]:h-full min-h-[360px]">
+                <WeeklyChart data={weeklyData} />
+              </div>
+            </div>
+          </div>
+          
+          {/* Right Column - Günün Ajandası (Large) + İşletme Durumu (Small) */}
+          <div className="flex flex-col">
+            <div className="space-y-6 flex-1 flex flex-col">
+              
+              {/* Günün Ajandası - large */}
+              <Card className="bg-slate-900 border-slate-800 min-h-[360px] flex-1">
                 <CardHeader>
                   <CardTitle className="text-2xl font-bold text-white flex items-center">
                     <Calendar className="h-8 w-8 text-slate-400 mr-3" />
@@ -464,153 +518,17 @@ export default function DashboardPage() {
                   <TodaysAgenda appointments={todaysAppointments} onStatusChange={() => user && fetchTodaysAppointments(user.id)} />
                 </CardContent>
               </Card>
-              
-              {/* Analytics Widget */}
-              <AnalyticsWidget 
-                appointmentData={appointmentData}
-                revenueData={revenueData}
-                newClientData={newClientData}
-                timeRange={timeRange}
-                setTimeRange={setTimeRange}
-              />
-            </div>
-          </div>
-          
-          {/* Sidebar (Right Side) - Stats and Quick Actions */}
-          <div className="lg:col-span-1">
-            <div className="space-y-6">
-              
-              {/* Quick Stats Section */}
-              <Card className="bg-slate-900 border-slate-800">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-white">Hızlı Bakış</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
-                    <CardHeader className="p-0">
-                      <div className="flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4 text-slate-400" />
-                        <CardTitle className="text-slate-300 text-sm font-medium">Bugünkü Randevu Sayısı</CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-0 pt-2">
-                      <div className="text-3xl font-bold text-white">{stats.todaysAppointments}</div>
-                    </CardContent>
-                  </Card>
 
-                  <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
-                    <CardHeader className="p-0">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="h-4 w-4 text-slate-400" />
-                        <CardTitle className="text-slate-300 text-sm font-medium">Bugünkü Beklenen Kazanç</CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-0 pt-2">
-                      <div className="text-3xl font-bold text-white">{`${stats.todaysExpectedRevenue.toFixed(0)} TL`}</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="p-6 bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
-                    <CardHeader className="p-0">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-slate-400" />
-                        <CardTitle className="text-slate-300 text-sm font-medium">Toplam Müşteri Sayısı</CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-0 pt-2">
-                      <div className="text-3xl font-bold text-white">{stats.totalClients}</div>
-                    </CardContent>
-                  </Card>
-                </CardContent>
-              </Card>
-              
-              {/* Quick Actions */}
-              <Card className="bg-slate-900 border-slate-800">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-white">Hızlı İşlemler</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <AddAppointmentModal />
-                </CardContent>
-              </Card>
-              
-              {/* Navigation Cards */}
-              <Card className="bg-slate-900 border-slate-800">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold text-white">Hızlı Erişim</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  
-                  {/* Calendar Card */}
-                  <Link href="/dashboard/calendar" className="block p-4 rounded-lg hover:bg-slate-800 transition-colors border border-slate-700 hover:border-slate-600">
-                    <div className="flex items-center">
-                      <Calendar className="h-6 w-6 text-slate-400 mr-3" />
-                      <div>
-                        <h4 className="font-semibold text-white">Randevu Takvimi</h4>
-                        <p className="text-slate-400 text-sm">Randevuları görüntüle ve yönet</p>
-                      </div>
-                    </div>
-                  </Link>
-                  
-                  {/* Profile Card */}
-                  <Link href="/dashboard/profile" className="block p-4 rounded-lg hover:bg-slate-800 transition-colors border border-slate-700 hover:border-slate-600">
-                    <div className="flex items-center">
-                      <Edit className="h-6 w-6 text-slate-400 mr-3" />
-                      <div>
-                        <h4 className="font-semibold text-white">Profilimi Düzenle</h4>
-                        <p className="text-slate-400 text-sm">Marka bilgilerini güncelle</p>
-                      </div>
-                    </div>
-                  </Link>
-                  
-                  {/* Services Card */}
-                  <Link href="/dashboard/services" className="block p-4 rounded-lg hover:bg-slate-800 transition-colors border border-slate-700 hover:border-slate-600">
-                    <div className="flex items-center">
-                      <Scissors className="h-6 w-6 text-slate-400 mr-3" />
-                      <div>
-                        <h4 className="font-semibold text-white">Hizmetlerim</h4>
-                        <p className="text-slate-400 text-sm">Hizmetleri ve fiyatları düzenle</p>
-                      </div>
-                    </div>
-                  </Link>
-                  
-                  {/* Portfolio Card */}
-                  <Link href="/dashboard/portfolio" className="block p-4 rounded-lg hover:bg-slate-800 transition-colors border border-slate-700 hover:border-slate-600">
-                    <div className="flex items-center">
-                      <ImageIcon className="h-6 w-6 text-slate-400 mr-3" />
-                      <div>
-                        <h4 className="font-semibold text-white">Portfolyo</h4>
-                        <p className="text-slate-400 text-sm">Albümleri ve fotoğrafları yönet</p>
-                      </div>
-                    </div>
-                  </Link>
-                  
-                  {/* Clients Card */}
-                  <Link href="/dashboard/clients" className="block p-4 rounded-lg hover:bg-slate-800 transition-colors border border-slate-700 hover:border-slate-600">
-                    <div className="flex items-center">
-                      <BookUser className="h-6 w-6 text-slate-400 mr-3" />
-                      <div>
-                        <h4 className="font-semibold text-white">Müşteri Yönetimi</h4>
-                        <p className="text-slate-400 text-sm">Müşteri bilgilerini yönet</p>
-                      </div>
-                    </div>
-                  </Link>
-
-                  {/* Team Management Card */}
-                  <Link href="/dashboard/team" className="block">
-                    <Card className="bg-slate-900 border-slate-800 hover:bg-slate-800/50 hover:border-slate-700 transition-colors">
-                      <CardHeader>
-                        <Users className="h-6 w-6 text-slate-400 mb-2" />
-                        <CardTitle className="text-white text-lg">Ekibim</CardTitle>
-                        <CardDescription className="text-slate-400">
-                          Personelini yönet, performanslarını ve primlerini takip et.
-                        </CardDescription>
-                      </CardHeader>
-                    </Card>
-                  </Link>
-                  
-                </CardContent>
-              </Card>
+              {/* İşletme Durumu - small */}
+              <div className="min-h-[220px]">
+                <BusinessOverviewWidget
+                  topServices={overviewTopServices}
+                  topStaff={overviewTopStaff}
+                  customerStats={overviewCustomers}
+                  timeRange={businessOverviewTimeRange}
+                  setTimeRange={setBusinessOverviewTimeRange}
+                />
+              </div>
             </div>
           </div>
         </div>

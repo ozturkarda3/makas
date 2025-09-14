@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabaseClient'
 import { format } from 'date-fns'
+import { normalizePhoneNumber } from '@/lib/utils'
 import { tr } from 'date-fns/locale'
 
 type BookingService = {
@@ -193,6 +194,12 @@ export default function BookingModal({ profile, service, staffMembers }: Booking
 
     setIsSubmitting(true)
     try {
+      const normalizedPhone = normalizePhoneNumber(customerPhone)
+      if (!normalizedPhone) {
+        toast.error('Geçerli bir telefon numarası giriniz')
+        setIsSubmitting(false)
+        return
+      }
       // Compose start datetime
       const start = toDateWithTime(selectedDate, selectedTime)
 
@@ -202,7 +209,7 @@ export default function BookingModal({ profile, service, staffMembers }: Booking
         .from('clients')
         .select('id')
         .eq('profile_id', profile.id)
-        .eq('phone', customerPhone)
+        .eq('phone', normalizedPhone)
         .maybeSingle()
 
       if (clientFetchError) {
@@ -217,7 +224,7 @@ export default function BookingModal({ profile, service, staffMembers }: Booking
       } else {
         const { data: newClient, error: createClientError } = await supabase
           .from('clients')
-          .insert({ name: customerName, phone: customerPhone, profile_id: profile.id })
+          .insert({ name: customerName, phone: normalizedPhone, profile_id: profile.id })
           .select('id')
           .single()
         if (createClientError || !newClient) {

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabaseClient'
 import HeroSection from "@/components/HeroSection";
 import FeaturesSection from "@/components/FeaturesSection";
@@ -9,7 +8,6 @@ import VisualProofSection from "@/components/VisualProofSection";
 import PricingSection from "@/components/PricingSection";
 
 export default function Home() {
-  const router = useRouter()
   const supabase = createClient()
   const [isLoading, setIsLoading] = useState(true)
 
@@ -17,11 +15,7 @@ export default function Home() {
     const checkAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          // User is logged in, redirect to dashboard
-          router.push('/dashboard')
-          return
-        }
+        // Do not redirect; allow logged-in users to remain on landing page
       } catch (error) {
         console.error('Auth check error:', error)
       } finally {
@@ -30,7 +24,7 @@ export default function Home() {
     }
 
     checkAuth()
-  }, [router, supabase])
+  }, [supabase])
 
   // Show loading while checking auth
   if (isLoading) {

@@ -13,16 +13,8 @@ interface WeeklyChartProps {
 }
 
 export default function WeeklyChart({ data }: WeeklyChartProps) {
-  // Format the data for better display
-  const formattedData = data.map(item => ({
-    ...item,
-    // Format date to show day name (e.g., "Pzt", "Sal")
-    date: new Date(item.date).toLocaleDateString('tr-TR', { 
-      weekday: 'short' 
-    }).charAt(0).toUpperCase() + new Date(item.date).toLocaleDateString('tr-TR', { 
-      weekday: 'short' 
-    }).slice(1)
-  }))
+  // Use incoming labels as-is to avoid parsing errors when non-ISO labels are provided
+  const formattedData = data
 
   return (
     <Card className="bg-slate-900 border-slate-800">
